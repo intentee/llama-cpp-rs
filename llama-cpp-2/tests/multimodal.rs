@@ -7,6 +7,7 @@
 )]
 
 use std::num::NonZeroU32;
+use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use llama_cpp_2::context::params::LlamaContextParams;
@@ -30,30 +31,11 @@ fn download_file(filename: &str) -> Result<std::path::PathBuf> {
     Ok(path)
 }
 
-fn create_test_image() -> Vec<u8> {
-    let width: usize = 64;
-    let height: usize = 64;
-    let mut data = vec![0u8; width * height * 3];
-
-    for y_pixel in 0..height {
-        for x_pixel in 0..width {
-            let offset = (y_pixel * width + x_pixel) * 3;
-
-            if x_pixel < width / 2 {
-                // Left half: red
-                data[offset] = 255;
-                data[offset + 1] = 0;
-                data[offset + 2] = 0;
-            } else {
-                // Right half: blue
-                data[offset] = 0;
-                data[offset + 1] = 0;
-                data[offset + 2] = 255;
-            }
-        }
-    }
-
-    data
+fn fixtures_path(filename: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join(filename)
 }
 
 #[test]
@@ -86,12 +68,15 @@ fn multimodal_vision_inference_produces_output() -> Result<()> {
         "model should support vision input"
     );
 
-    let image_data = create_test_image();
-    let bitmap = MtmdBitmap::from_image_data(64, 64, &image_data)
-        .with_context(|| "failed to create bitmap from image data")?;
+    let image_path = fixtures_path("llamas.jpg");
+    let image_path_str = image_path
+        .to_str()
+        .with_context(|| "image path is not valid UTF-8")?;
+    let bitmap = MtmdBitmap::from_file(&mtmd_ctx, image_path_str)
+        .with_context(|| "failed to load image from file")?;
 
     let marker = llama_cpp_2::mtmd::mtmd_default_marker();
-    let user_content = format!("{marker}What colors do you see in this image?");
+    let user_content = format!("{marker}What animals do you see in this image?");
     let chat_template = model.chat_template(None)?;
     let messages = [LlamaChatMessage::new("user".to_string(), user_content)?];
     let formatted_prompt = model.apply_chat_template(&chat_template, &messages, true)?;
@@ -127,7 +112,7 @@ fn multimodal_vision_inference_produces_output() -> Result<()> {
     let mut sampler = LlamaSampler::greedy();
     let mut generated = String::new();
     let mut decoder = encoding_rs::UTF_8.new_decoder();
-    let max_tokens = 128;
+    let max_tokens = 512;
 
     let mut batch = llama_cpp_2::llama_batch::LlamaBatch::new(512, 1);
     let mut current_position = n_past;
