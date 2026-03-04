@@ -165,6 +165,14 @@ fn configure_msvc_release_workaround(config: &mut Config, profile: &str) {
 }
 
 fn configure_android_cmake(config: &mut Config, ndk: &AndroidNdk, target_triple: &str) {
+    #[allow(clippy::assertions_on_constants)]
+    {
+        assert!(
+            !(cfg!(feature = "shared-stdcxx") && cfg!(feature = "static-stdcxx")),
+            "Features 'shared-stdcxx' and 'static-stdcxx' are mutually exclusive"
+        );
+    }
+
     println!("cargo:rerun-if-env-changed=ANDROID_NDK");
     println!("cargo:rerun-if-env-changed=NDK_ROOT");
     println!("cargo:rerun-if-env-changed=ANDROID_NDK_ROOT");
@@ -174,6 +182,12 @@ fn configure_android_cmake(config: &mut Config, ndk: &AndroidNdk, target_triple:
     config.define("CMAKE_TOOLCHAIN_FILE", ndk.cmake_toolchain_file());
     config.define("ANDROID_PLATFORM", ndk.android_platform());
     config.define("ANDROID_ABI", ndk.abi);
+
+    if cfg!(feature = "static-stdcxx") {
+        config.define("ANDROID_STL", "c++_static");
+    } else if cfg!(feature = "shared-stdcxx") {
+        config.define("ANDROID_STL", "c++_shared");
+    }
 
     configure_android_arch_flags(config, ndk.abi);
 

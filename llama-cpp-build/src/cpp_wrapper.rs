@@ -21,6 +21,10 @@ pub fn compile_cpp_wrappers(llama_src: &Path, target_os: &TargetOs) {
         build.flag("/std:c++17");
     }
 
+    if target_os.is_android() && cfg!(feature = "static-stdcxx") {
+        build.cpp_link_stdlib(None);
+    }
+
     build.compile("llama_cpp_sys_2_common_wrapper");
 }
 

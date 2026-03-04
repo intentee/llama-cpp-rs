@@ -206,7 +206,19 @@ fn link_platform_system_libraries(target_os: &TargetOs) {
         TargetOs::Apple(variant) => {
             link_apple_frameworks(*variant);
         }
-        _ => {}
+        TargetOs::Android => {
+            link_android_cpp_stdlib();
+        }
+        TargetOs::Windows(_) => {}
+    }
+}
+
+fn link_android_cpp_stdlib() {
+    if cfg!(feature = "static-stdcxx") {
+        println!("cargo:rustc-link-lib=c++_static");
+        println!("cargo:rustc-link-lib=c++abi");
+    } else if cfg!(feature = "shared-stdcxx") {
+        println!("cargo:rustc-link-lib=c++_shared");
     }
 }
 

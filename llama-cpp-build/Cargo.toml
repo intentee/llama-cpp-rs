@@ -23,6 +23,7 @@ vulkan = []
 openmp = []
 rocm = []
 shared-stdcxx = []
+static-stdcxx = []
 system-ggml = []
 mtmd = []
 
