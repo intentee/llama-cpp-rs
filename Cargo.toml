@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "llama-cpp-build",
   "llama-cpp-sys-2",
   "llama-cpp-2",
   "examples/simple",
@@ -26,6 +27,11 @@ tracing-core = "0.1"
 # build
 bindgen = "0.72.1"
 cc = "1.2.56"
+cmake = "0.1"
+find_cuda_helper = "0.2.0"
+glob = "0.3.3"
+llama-cpp-build = { path = "llama-cpp-build", version = "0.1.138" }
+walkdir = "2"
 
 # dev and examples
 actix-web = "4.13.0"

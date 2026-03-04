@@ -72,23 +72,16 @@ include = [
 [dependencies]
 
 [build-dependencies]
-bindgen = { workspace = true }
-cc = { workspace = true, features = ["parallel"] }
-cmake = "0.1"
-find_cuda_helper = "0.2.0"
-glob = "0.3.3"
-walkdir = "2"
+llama-cpp-build = { workspace = true, features = [] }
 
 [features]
-cuda = []
-# Disables the need to dynamically link against libcuda.so / cuda.dll
-cuda-no-vmm = ["cuda"]
-metal = []
-dynamic-link = []
-vulkan = []
-openmp = []
-rocm = []
-# Only has an impact on Android.
-shared-stdcxx = []
-system-ggml = []
-mtmd = []
+cuda = ["llama-cpp-build/cuda"]
+cuda-no-vmm = ["cuda", "llama-cpp-build/cuda-no-vmm"]
+metal = ["llama-cpp-build/metal"]
+dynamic-link = ["llama-cpp-build/dynamic-link"]
+vulkan = ["llama-cpp-build/vulkan"]
+openmp = ["llama-cpp-build/openmp"]
+rocm = ["llama-cpp-build/rocm"]
+shared-stdcxx = ["llama-cpp-build/shared-stdcxx"]
+system-ggml = ["llama-cpp-build/system-ggml"]
+mtmd = ["llama-cpp-build/mtmd"]
