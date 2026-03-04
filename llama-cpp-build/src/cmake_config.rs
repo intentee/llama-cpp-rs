@@ -43,6 +43,8 @@ fn configure_base_defines(config: &mut Config) {
     config.define("LLAMA_BUILD_TOOLS", "OFF");
     config.define("LLAMA_BUILD_COMMON", "ON");
     config.define("LLAMA_CURL", "OFF");
+    config.cflag("-w");
+    config.cxxflag("-w");
 }
 
 fn pass_cmake_env_vars(config: &mut Config) {
@@ -138,6 +140,8 @@ fn configure_platform_specific(
             config.define("GGML_BLAS", "OFF");
         }
         TargetOs::Windows(WindowsVariant::Msvc) => {
+            config.cflag("/w");
+            config.cxxflag("/w");
             configure_msvc_release_workaround(config, profile);
         }
         TargetOs::Android => {

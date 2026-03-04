@@ -8,6 +8,7 @@ pub fn compile_mtmd(llama_src: &Path, target_os: &TargetOs) {
 
     build
         .cpp(true)
+        .warnings(false)
         .include(&mtmd_src)
         .include(llama_src)
         .include(llama_src.join("include"))
@@ -15,7 +16,6 @@ pub fn compile_mtmd(llama_src: &Path, target_os: &TargetOs) {
         .include(llama_src.join("common"))
         .include(llama_src.join("vendor"))
         .flag_if_supported("-std=c++17")
-        .flag_if_supported("-Wno-cast-qual")
         .pic(true);
 
     if target_os.is_msvc() {

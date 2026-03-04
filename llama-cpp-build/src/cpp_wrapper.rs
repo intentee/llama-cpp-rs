@@ -7,6 +7,7 @@ pub fn compile_cpp_wrappers(llama_src: &Path, target_os: &TargetOs) {
 
     build
         .cpp(true)
+        .warnings(false)
         .file("wrapper_common.cpp")
         .file("wrapper_oai.cpp")
         .include(llama_src)
