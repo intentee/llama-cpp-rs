@@ -1,6 +1,7 @@
 use std::path::Path;
 
-use crate::library_extraction::{debug_log, extract_lib_assets};
+use crate::debug_log;
+use crate::library_asset_extraction::extract_lib_assets;
 
 pub fn copy_shared_libraries(out_dir: &Path, target_dir: &Path) {
     let assets = extract_lib_assets(out_dir);

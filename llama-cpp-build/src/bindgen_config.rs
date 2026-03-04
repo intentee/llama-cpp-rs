@@ -1,8 +1,9 @@
 use std::env;
 use std::path::Path;
 
-use crate::library_extraction::debug_log;
-use crate::target_os::{AndroidNdk, TargetOs};
+use crate::android_ndk::AndroidNdk;
+use crate::debug_log;
+use crate::target_os::TargetOs;
 
 pub fn generate_bindings(
     llama_src: &Path,

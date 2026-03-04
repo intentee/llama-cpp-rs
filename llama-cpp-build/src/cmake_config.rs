@@ -3,8 +3,9 @@ use std::path::{Path, PathBuf};
 
 use cmake::Config;
 
-use crate::library_extraction::debug_log;
-use crate::target_os::{AndroidNdk, TargetOs, WindowsVariant};
+use crate::android_ndk::AndroidNdk;
+use crate::debug_log;
+use crate::target_os::{TargetOs, WindowsVariant};
 
 pub fn configure_and_build(
     llama_src: &Path,
@@ -228,7 +229,7 @@ fn configure_android_arch_flags(config: &mut Config, abi: &str) {
 fn configure_gpu_backends(config: &mut Config, target_os: &TargetOs) {
     if cfg!(feature = "vulkan") {
         config.define("GGML_VULKAN", "ON");
-        configure_vulkan_linking(target_os);
+        configure_vulkan_linking(config, target_os);
     }
 
     if cfg!(feature = "cuda") {
@@ -244,7 +245,7 @@ fn configure_gpu_backends(config: &mut Config, target_os: &TargetOs) {
     }
 }
 
-fn configure_vulkan_linking(target_os: &TargetOs) {
+fn configure_vulkan_linking(config: &mut Config, target_os: &TargetOs) {
     match target_os {
         TargetOs::Windows(_) => {
             let vulkan_path = env::var("VULKAN_SDK")
@@ -257,8 +258,8 @@ fn configure_vulkan_linking(target_os: &TargetOs) {
             // SAFETY: build scripts are single-threaded, so modifying env is safe.
             unsafe { env::set_var("TrackFileAccess", "false") };
 
-            // Since we disabled TrackFileAccess, we need /FS to avoid
-            // parallel PDB access issues.
+            config.cflag("/FS");
+            config.cxxflag("/FS");
         }
         TargetOs::Linux => {
             if let Ok(vulkan_path) = env::var("VULKAN_SDK") {

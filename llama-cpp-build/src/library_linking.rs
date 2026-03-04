@@ -1,7 +1,8 @@
 use std::env;
 use std::path::Path;
 
-use crate::library_extraction::{debug_log, extract_lib_names};
+use crate::debug_log;
+use crate::library_name_extraction::extract_lib_names;
 use crate::target_os::{AppleVariant, TargetOs, WindowsVariant};
 
 pub fn link_libraries(
@@ -246,9 +247,38 @@ fn link_apple_frameworks(variant: AppleVariant) {
     println!("cargo:rustc-link-lib=c++");
 
     if let AppleVariant::MacOS = variant
-        && let Some(path) = crate::target_os::macos_link_search_path()
+        && let Some(path) = macos_link_search_path()
     {
         println!("cargo:rustc-link-lib=clang_rt.osx");
         println!("cargo:rustc-link-search={path}");
     }
+}
+
+fn macos_link_search_path() -> Option<String> {
+    let output = std::process::Command::new("clang")
+        .arg("--print-search-dirs")
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        println!(
+            "cargo:warning=failed to run 'clang --print-search-dirs', continuing without a link search path"
+        );
+
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    for line in stdout.lines() {
+        if line.contains("libraries: =") {
+            let path = line.split('=').nth(1)?;
+
+            return Some(format!("{path}/lib/darwin"));
+        }
+    }
+
+    println!("cargo:warning=failed to determine link search path, continuing without it");
+
+    None
 }

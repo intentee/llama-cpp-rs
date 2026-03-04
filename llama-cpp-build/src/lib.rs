@@ -1,10 +1,13 @@
 //! Build system for llama-cpp-sys-2 FFI bindings to llama.cpp.
 
+mod android_ndk;
 mod bindgen_config;
 mod cmake_config;
 mod cpp_wrapper;
-mod library_extraction;
+mod cpp_wrapper_mtmd;
+mod library_asset_extraction;
 mod library_linking;
+mod library_name_extraction;
 mod rebuild_tracking;
 mod shared_libs;
 mod target_os;
@@ -12,8 +15,17 @@ mod target_os;
 use std::env;
 use std::path::{Path, PathBuf};
 
-use library_extraction::debug_log;
-use target_os::{AndroidNdk, TargetOs};
+use android_ndk::AndroidNdk;
+use target_os::TargetOs;
+
+#[macro_export]
+macro_rules! debug_log {
+    ($($arg:tt)*) => {
+        if std::env::var("BUILD_DEBUG").is_ok() {
+            println!("cargo:warning=[DEBUG] {}", format!($($arg)*));
+        }
+    };
+}
 
 /// Shared state passed between build phases.
 #[derive(Debug)]
@@ -33,7 +45,7 @@ impl BuildContext {
     fn detect() -> Self {
         let target_triple =
             env::var("TARGET").expect("TARGET env var is required in build scripts");
-        let target_os = target_os::parse_target_os(&target_triple)
+        let target_os = TargetOs::from_target_triple(&target_triple)
             .unwrap_or_else(|error| panic!("Failed to parse target OS: {error}"));
         let out_dir = PathBuf::from(
             env::var("OUT_DIR").expect("OUT_DIR env var is required in build scripts"),
@@ -130,7 +142,7 @@ pub fn build() {
     );
 
     if cfg!(feature = "mtmd") {
-        cpp_wrapper::compile_mtmd(&context.llama_src, &context.target_os);
+        cpp_wrapper_mtmd::compile_mtmd(&context.llama_src, &context.target_os);
     }
 
     library_linking::link_libraries(
