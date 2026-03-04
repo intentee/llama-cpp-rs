@@ -3,7 +3,7 @@
 //! Usage:
 //!   cargo run -p openai-server -- <model_path>
 //!   cargo run -p openai-server -- hf-model <repo> <model>
-use actix_web::{http::StatusCode, web, App, HttpResponse, HttpServer};
+use actix_web::{App, HttpResponse, HttpServer, http::StatusCode, web};
 use hf_hub::api::sync::ApiBuilder;
 use llama_cpp_2::context::params::LlamaContextParams;
 use llama_cpp_2::llama_backend::LlamaBackend;
@@ -13,7 +13,7 @@ use llama_cpp_2::model::{AddBos, GrammarTriggerType, LlamaChatTemplate, LlamaMod
 use llama_cpp_2::openai::OpenAIChatTemplateParams;
 use llama_cpp_2::sampling::LlamaSampler;
 use llama_cpp_2::token::LlamaToken;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::num::NonZeroU32;
 use std::path::PathBuf;

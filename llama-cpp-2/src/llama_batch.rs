@@ -6,15 +6,15 @@ use std::marker::PhantomData;
 
 /// A safe wrapper around `llama_batch`.
 #[derive(Debug)]
-pub struct LlamaBatch<'a> {
+pub struct LlamaBatch<'tokens> {
     /// The number of tokens the batch was allocated with. they are safe to write to - but not necessarily read from as they are not necessarily initialized
     allocated: usize,
     /// The logits that are initialized. Used by [`LlamaContext`] to ensure that only initialized logits are accessed.
-    pub(crate) initialized_logits: Vec<i32>,
+    pub initialized_logits: Vec<i32>,
     #[allow(clippy::doc_markdown)]
     /// The llama_cpp batch. always initialize by `llama_cpp_sys_2::llama_batch_init(allocated, <unknown>, <unknown>)`
-    pub(crate) llama_batch: llama_batch,
-    phantom: PhantomData<&'a [LlamaToken]>,
+    pub llama_batch: llama_batch,
+    phantom: PhantomData<&'tokens [LlamaToken]>,
 }
 
 /// Errors that can occur when adding a token to a batch.
@@ -28,7 +28,7 @@ pub enum BatchAddError {
     EmptyBuffer,
 }
 
-impl<'a> LlamaBatch<'a> {
+impl<'tokens> LlamaBatch<'tokens> {
     /// Clear the batch. This does not free the memory associated with the batch, but it does reset
     /// the number of tokens to 0.
     pub fn clear(&mut self) {
@@ -166,7 +166,7 @@ impl<'a> LlamaBatch<'a> {
     ///
     /// # Panics
     /// If the number of tokens in ``tokens`` exceeds [`i32::MAX`].
-    pub fn get_one(tokens: &'a [LlamaToken]) -> Result<Self, BatchAddError> {
+    pub fn get_one(tokens: &'tokens [LlamaToken]) -> Result<Self, BatchAddError> {
         if tokens.is_empty() {
             return Err(BatchAddError::EmptyBuffer);
         }
@@ -200,7 +200,7 @@ impl<'a> LlamaBatch<'a> {
     }
 }
 
-impl<'a> Drop for LlamaBatch<'a> {
+impl<'tokens> Drop for LlamaBatch<'tokens> {
     /// Drops the `LlamaBatch`.
     ///
     /// ```

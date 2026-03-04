@@ -234,7 +234,7 @@ impl From<llama_cpp_sys_2::ggml_type> for KvCacheType {
     clippy::module_name_repetitions
 )]
 pub struct LlamaContextParams {
-    pub(crate) context_params: llama_cpp_sys_2::llama_context_params,
+    pub context_params: llama_cpp_sys_2::llama_context_params,
 }
 
 /// SAFETY: we do not currently allow setting or reading the pointers that cause this to not be automatically send or sync.

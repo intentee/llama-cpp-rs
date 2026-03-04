@@ -7,21 +7,21 @@ use std::slice;
 
 /// Parameters for applying OpenAI-compatible chat templates.
 #[derive(Debug, Clone, PartialEq)]
-pub struct OpenAIChatTemplateParams<'a> {
+pub struct OpenAIChatTemplateParams<'params> {
     /// OpenAI-compatible messages JSON array.
-    pub messages_json: &'a str,
+    pub messages_json: &'params str,
     /// Optional OpenAI-compatible tools JSON array.
-    pub tools_json: Option<&'a str>,
+    pub tools_json: Option<&'params str>,
     /// Optional tool choice string.
-    pub tool_choice: Option<&'a str>,
+    pub tool_choice: Option<&'params str>,
     /// Optional JSON schema string for tool grammar generation.
-    pub json_schema: Option<&'a str>,
+    pub json_schema: Option<&'params str>,
     /// Optional custom grammar string.
-    pub grammar: Option<&'a str>,
+    pub grammar: Option<&'params str>,
     /// Optional reasoning format string.
-    pub reasoning_format: Option<&'a str>,
+    pub reasoning_format: Option<&'params str>,
     /// Optional chat template kwargs JSON object.
-    pub chat_template_kwargs: Option<&'a str>,
+    pub chat_template_kwargs: Option<&'params str>,
     /// Whether to add the assistant generation prompt.
     pub add_generation_prompt: bool,
     /// Whether to render templates with Jinja.
@@ -41,7 +41,7 @@ pub struct OpenAIChatTemplateParams<'a> {
 /// Streaming OpenAI-compatible parser state.
 #[derive(Debug)]
 pub struct ChatParseStateOaicompat {
-    pub(crate) state: NonNull<llama_cpp_sys_2::llama_rs_chat_parse_state_oaicompat>,
+    pub state: NonNull<llama_cpp_sys_2::llama_rs_chat_parse_state_oaicompat>,
 }
 
 impl ChatParseStateOaicompat {

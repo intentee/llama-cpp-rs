@@ -8,8 +8,8 @@ use std::path::Path;
 use clap::Parser;
 use encoding_rs::UTF_8;
 
-use llama_cpp_2::context::params::LlamaContextParams;
 use llama_cpp_2::context::LlamaContext;
+use llama_cpp_2::context::params::LlamaContextParams;
 use llama_cpp_2::llama_batch::LlamaBatch;
 use llama_cpp_2::model::params::LlamaModelParams;
 use llama_cpp_2::mtmd::{
@@ -73,11 +73,11 @@ pub struct MtmdCliParams {
 
 /// State of the MTMD CLI application.
 #[allow(missing_debug_implementations)]
-pub struct MtmdCliContext<'a> {
+pub struct MtmdCliContext<'batch> {
     /// The MTMD context for multimodal processing.
     pub mtmd_ctx: MtmdContext,
     /// The batch used for processing tokens.
-    pub batch: LlamaBatch<'a>,
+    pub batch: LlamaBatch<'batch>,
     /// The list of loaded bitmaps (images/audio).
     pub bitmaps: Vec<MtmdBitmap>,
     /// The number of past tokens processed.
@@ -88,7 +88,7 @@ pub struct MtmdCliContext<'a> {
     pub chat: Vec<LlamaChatMessage>,
 }
 
-impl<'a> MtmdCliContext<'a> {
+impl<'batch> MtmdCliContext<'batch> {
     /// Creates a new MTMD CLI context
     ///
     /// # Errors

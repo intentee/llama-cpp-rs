@@ -6,18 +6,18 @@
     clippy::cast_sign_loss
 )]
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use clap::Parser;
 use hf_hub::api::sync::ApiBuilder;
 use llama_cpp_2::context::params::LlamaContextParams;
 use llama_cpp_2::llama_backend::LlamaBackend;
 use llama_cpp_2::llama_batch::LlamaBatch;
-use llama_cpp_2::model::params::kv_overrides::ParamOverrideValue;
-use llama_cpp_2::model::params::{LlamaModelParams, LlamaSplitMode};
 use llama_cpp_2::model::AddBos;
 use llama_cpp_2::model::LlamaModel;
+use llama_cpp_2::model::params::kv_overrides::ParamOverrideValue;
+use llama_cpp_2::model::params::{LlamaModelParams, LlamaSplitMode};
 use llama_cpp_2::sampling::LlamaSampler;
-use llama_cpp_2::{ggml_time_us, send_logs_to_tracing, LogOptions};
+use llama_cpp_2::{LogOptions, ggml_time_us, send_logs_to_tracing};
 
 use std::ffi::CString;
 use std::io::Write;

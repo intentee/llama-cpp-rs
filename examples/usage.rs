@@ -37,9 +37,7 @@ fn main() -> anyhow::Result<()> {
     let mut context = model.new_context(&backend, context_params)?;
 
     let chat_template = model.chat_template(None)?;
-    let messages = vec![
-        LlamaChatMessage::new("user".to_string(), user_prompt)?,
-    ];
+    let messages = vec![LlamaChatMessage::new("user".to_string(), user_prompt)?];
     let prompt = model.apply_chat_template(&chat_template, &messages, true)?;
 
     let tokens = model.str_to_token(&prompt, AddBos::Always)?;

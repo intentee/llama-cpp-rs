@@ -51,9 +51,9 @@ impl LlamaTokenDataArray {
     /// ], false);
     /// assert_eq!(array.data.len(), 2);
     /// assert_eq!(array.sorted, false);
-    pub fn from_iter<T>(data: T, sorted: bool) -> LlamaTokenDataArray
+    pub fn from_iter<TIterator>(data: TIterator, sorted: bool) -> LlamaTokenDataArray
     where
-        T: IntoIterator<Item = LlamaTokenData>,
+        TIterator: IntoIterator<Item = LlamaTokenData>,
     {
         Self::new(data.into_iter().collect(), sorted)
     }
@@ -78,10 +78,10 @@ impl LlamaTokenDataArray {
     /// initialized token data and the length must be less than the capacity of this array's data
     /// buffer.
     /// if the data is not sorted, sorted must be false.
-    pub(crate) unsafe fn modify_as_c_llama_token_data_array<T>(
+    pub unsafe fn modify_as_c_llama_token_data_array<TResult>(
         &mut self,
-        modify: impl FnOnce(&mut llama_cpp_sys_2::llama_token_data_array) -> T,
-    ) -> T {
+        modify: impl FnOnce(&mut llama_cpp_sys_2::llama_token_data_array) -> TResult,
+    ) -> TResult {
         let size = self.data.len();
         let data = self
             .data

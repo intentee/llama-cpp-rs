@@ -27,7 +27,7 @@ pub mod params;
 #[repr(transparent)]
 #[allow(clippy::module_name_repetitions)]
 pub struct LlamaModel {
-    pub(crate) model: NonNull<llama_cpp_sys_2::llama_model>,
+    pub model: NonNull<llama_cpp_sys_2::llama_model>,
 }
 
 /// A safe wrapper around `llama_lora_adapter`.
@@ -35,7 +35,7 @@ pub struct LlamaModel {
 #[repr(transparent)]
 #[allow(clippy::module_name_repetitions)]
 pub struct LlamaLoraAdapter {
-    pub(crate) lora_adapter: NonNull<llama_cpp_sys_2::llama_adapter_lora>,
+    pub lora_adapter: NonNull<llama_cpp_sys_2::llama_adapter_lora>,
 }
 
 /// A performance-friendly wrapper around [`LlamaModel::chat_template`] which is then
@@ -179,7 +179,7 @@ unsafe impl Send for LlamaModel {}
 unsafe impl Sync for LlamaModel {}
 
 impl LlamaModel {
-    pub(crate) fn vocab_ptr(&self) -> *const llama_cpp_sys_2::llama_vocab {
+    pub fn vocab_ptr(&self) -> *const llama_cpp_sys_2::llama_vocab {
         unsafe { llama_cpp_sys_2::llama_model_get_vocab(self.model.as_ptr()) }
     }
 
@@ -842,11 +842,11 @@ impl LlamaModel {
     /// There is many ways this can fail. See [`LlamaContextLoadError`] for more information.
     // we intentionally do not derive Copy on `LlamaContextParams` to allow llama.cpp to change the type to be non-trivially copyable.
     #[allow(clippy::needless_pass_by_value)]
-    pub fn new_context<'a>(
-        &'a self,
+    pub fn new_context<'model>(
+        &'model self,
         _: &LlamaBackend,
         params: LlamaContextParams,
-    ) -> Result<LlamaContext<'a>, LlamaContextLoadError> {
+    ) -> Result<LlamaContext<'model>, LlamaContextLoadError> {
         let context_params = params.context_params;
         let context = unsafe {
             llama_cpp_sys_2::llama_new_context_with_model(self.model.as_ptr(), context_params)

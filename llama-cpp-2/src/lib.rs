@@ -26,7 +26,7 @@ pub mod context;
 pub mod llama_backend;
 pub mod llama_batch;
 #[cfg(feature = "llguidance")]
-pub(crate) mod llguidance_sampler;
+pub mod llguidance_sampler;
 mod log;
 pub mod model;
 #[cfg(feature = "mtmd")]
@@ -37,16 +37,16 @@ pub mod timing;
 pub mod token;
 pub mod token_type;
 
-pub(crate) fn status_is_ok(status: llama_cpp_sys_2::llama_rs_status) -> bool {
+pub fn status_is_ok(status: llama_cpp_sys_2::llama_rs_status) -> bool {
     status == llama_cpp_sys_2::LLAMA_RS_STATUS_OK
 }
 
-pub(crate) fn status_to_i32(status: llama_cpp_sys_2::llama_rs_status) -> i32 {
+pub fn status_to_i32(status: llama_cpp_sys_2::llama_rs_status) -> i32 {
     status as i32
 }
 
 /// A failable result from a llama.cpp function.
-pub type Result<T> = std::result::Result<T, LlamaCppError>;
+pub type Result<TValue> = std::result::Result<TValue, LlamaCppError>;
 
 /// All errors that can occur in the llama-cpp crate.
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]

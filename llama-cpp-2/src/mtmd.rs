@@ -142,7 +142,7 @@ pub struct MtmdInputText {
 /// text, images, and audio through llama.cpp's multimodal interface.
 #[derive(Debug)]
 pub struct MtmdContext {
-    pub(crate) context: NonNull<llama_cpp_sys_2::mtmd_context>,
+    pub context: NonNull<llama_cpp_sys_2::mtmd_context>,
 }
 
 // MtmdContext is thread safe
@@ -337,7 +337,7 @@ impl Drop for MtmdContext {
 /// For audio, data is stored as PCM F32 samples.
 #[derive(Debug, Clone)]
 pub struct MtmdBitmap {
-    pub(crate) bitmap: NonNull<llama_cpp_sys_2::mtmd_bitmap>,
+    pub bitmap: NonNull<llama_cpp_sys_2::mtmd_bitmap>,
 }
 
 // MtmdBitmap is thread safe
@@ -582,7 +582,7 @@ impl Drop for MtmdBitmap {
 /// with text chunks containing tokens and media chunks containing embeddings.
 #[derive(Debug)]
 pub struct MtmdInputChunks {
-    pub(crate) chunks: NonNull<llama_cpp_sys_2::mtmd_input_chunks>,
+    pub chunks: NonNull<llama_cpp_sys_2::mtmd_input_chunks>,
 }
 
 impl Default for MtmdInputChunks {
@@ -731,7 +731,7 @@ impl Drop for MtmdInputChunks {
 /// data and operations are available.
 #[derive(Debug)]
 pub struct MtmdInputChunk {
-    pub(crate) chunk: NonNull<llama_cpp_sys_2::mtmd_input_chunk>,
+    pub chunk: NonNull<llama_cpp_sys_2::mtmd_input_chunk>,
     owned: bool,
 }
 

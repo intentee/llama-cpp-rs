@@ -13,7 +13,7 @@ use crate::{GrammarError, SamplerAcceptError, status_is_ok, status_to_i32};
 
 /// A safe wrapper around `llama_sampler`.
 pub struct LlamaSampler {
-    pub(crate) sampler: *mut llama_cpp_sys_2::llama_sampler,
+    pub sampler: *mut llama_cpp_sys_2::llama_sampler,
 }
 
 impl Debug for LlamaSampler {

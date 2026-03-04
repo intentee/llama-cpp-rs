@@ -69,7 +69,7 @@ log_cs!(
 );
 
 #[derive(Clone, Copy)]
-pub(super) enum Module {
+pub enum Module {
     GGML,
     LlamaCpp,
 }
@@ -97,8 +97,8 @@ fn meta_for_level(
     }
 }
 
-pub(super) struct State {
-    pub(super) options: LogOptions,
+pub struct State {
+    pub options: LogOptions,
     module: Module,
     buffered: std::sync::Mutex<Option<(llama_cpp_sys_2::ggml_log_level, String)>>,
     previous_level: std::sync::atomic::AtomicI32,
@@ -106,7 +106,7 @@ pub(super) struct State {
 }
 
 impl State {
-    pub(super) fn new(module: Module, options: LogOptions) -> Self {
+    pub fn new(module: Module, options: LogOptions) -> Self {
         Self {
             options,
             module,
@@ -156,7 +156,7 @@ impl State {
     }
 
     /// Append more text to the previously buffered log. The text may or may not end with a newline.
-    pub(super) fn cont_buffered_log(&self, text: &str) {
+    pub fn cont_buffered_log(&self, text: &str) {
         let mut lock = self.buffered.lock().unwrap();
 
         if let Some((previous_log_level, mut buffer)) = lock.take() {
@@ -184,7 +184,7 @@ impl State {
     }
 
     /// Start buffering a message. Not the CONT log level and text is missing a newline.
-    pub(super) fn buffer_non_cont(&self, level: llama_cpp_sys_2::ggml_log_level, text: &str) {
+    pub fn buffer_non_cont(&self, level: llama_cpp_sys_2::ggml_log_level, text: &str) {
         debug_assert!(!text.ends_with('\n'));
         debug_assert_ne!(level, llama_cpp_sys_2::GGML_LOG_LEVEL_CONT);
 
@@ -210,7 +210,7 @@ impl State {
     }
 
     // Emit a normal unbuffered log message (not the CONT log level and the text ends with a newline).
-    pub(super) fn emit_non_cont_line(&self, level: llama_cpp_sys_2::ggml_log_level, text: &str) {
+    pub fn emit_non_cont_line(&self, level: llama_cpp_sys_2::ggml_log_level, text: &str) {
         debug_assert!(text.ends_with('\n'));
         debug_assert_ne!(level, llama_cpp_sys_2::GGML_LOG_LEVEL_CONT);
 
@@ -257,10 +257,7 @@ impl State {
         }
     }
 
-    pub(super) fn update_previous_level_for_disabled_log(
-        &self,
-        level: llama_cpp_sys_2::ggml_log_level,
-    ) {
+    pub fn update_previous_level_for_disabled_log(&self, level: llama_cpp_sys_2::ggml_log_level) {
         if level != llama_cpp_sys_2::GGML_LOG_LEVEL_CONT {
             self.previous_level
                 .store(level as i32, std::sync::atomic::Ordering::Release);
@@ -268,7 +265,7 @@ impl State {
     }
 
     /// Checks whether the given log level is enabled by the current tracing subscriber.
-    pub(super) fn is_enabled_for_level(&self, level: llama_cpp_sys_2::ggml_log_level) -> bool {
+    pub fn is_enabled_for_level(&self, level: llama_cpp_sys_2::ggml_log_level) -> bool {
         // CONT logs do not need to check if they are enabled.
         let level = if level == llama_cpp_sys_2::GGML_LOG_LEVEL_CONT {
             self.previous_level
@@ -282,8 +279,8 @@ impl State {
     }
 }
 
-pub(super) static LLAMA_STATE: OnceLock<Box<State>> = OnceLock::new();
-pub(super) static GGML_STATE: OnceLock<Box<State>> = OnceLock::new();
+pub static LLAMA_STATE: OnceLock<Box<State>> = OnceLock::new();
+pub static GGML_STATE: OnceLock<Box<State>> = OnceLock::new();
 
 #[cfg(test)]
 mod tests {

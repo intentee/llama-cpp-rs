@@ -18,7 +18,7 @@ pub enum ParamOverrideValue {
 }
 
 impl ParamOverrideValue {
-    pub(crate) fn tag(&self) -> llama_cpp_sys_2::llama_model_kv_override_type {
+    pub fn tag(&self) -> llama_cpp_sys_2::llama_model_kv_override_type {
         match self {
             ParamOverrideValue::Bool(_) => llama_cpp_sys_2::LLAMA_KV_OVERRIDE_TYPE_BOOL,
             ParamOverrideValue::Float(_) => llama_cpp_sys_2::LLAMA_KV_OVERRIDE_TYPE_FLOAT,
@@ -27,7 +27,7 @@ impl ParamOverrideValue {
         }
     }
 
-    pub(crate) fn value(&self) -> llama_cpp_sys_2::llama_model_kv_override__bindgen_ty_1 {
+    pub fn value(&self) -> llama_cpp_sys_2::llama_model_kv_override__bindgen_ty_1 {
         match self {
             ParamOverrideValue::Bool(value) => {
                 llama_cpp_sys_2::llama_model_kv_override__bindgen_ty_1 { val_bool: *value }
@@ -73,21 +73,23 @@ impl From<&llama_cpp_sys_2::llama_model_kv_override> for ParamOverrideValue {
 
 /// A struct implementing [`IntoIterator`] over the key-value overrides for a model.
 #[derive(Debug)]
-pub struct KvOverrides<'a> {
-    model_params: &'a LlamaModelParams,
+pub struct KvOverrides<'model_params> {
+    model_params: &'model_params LlamaModelParams,
 }
 
 impl KvOverrides<'_> {
-    pub(super) fn new<'a>(model_params: &'a LlamaModelParams) -> KvOverrides<'a> {
+    pub fn new<'model_params>(
+        model_params: &'model_params LlamaModelParams,
+    ) -> KvOverrides<'model_params> {
         KvOverrides { model_params }
     }
 }
 
-impl<'a> IntoIterator for KvOverrides<'a> {
+impl<'model_params> IntoIterator for KvOverrides<'model_params> {
     // I'm fairly certain this could be written returning by reference, but I'm not sure how to do it safely. I do not
     // expect this to be a performance bottleneck so the copy should be fine. (let me know if it's not fine!)
     type Item = (CString, ParamOverrideValue);
-    type IntoIter = KvOverrideValueIterator<'a>;
+    type IntoIter = KvOverrideValueIterator<'model_params>;
 
     fn into_iter(self) -> Self::IntoIter {
         KvOverrideValueIterator {
@@ -99,8 +101,8 @@ impl<'a> IntoIterator for KvOverrides<'a> {
 
 /// An iterator over the key-value overrides for a model.
 #[derive(Debug)]
-pub struct KvOverrideValueIterator<'a> {
-    model_params: &'a LlamaModelParams,
+pub struct KvOverrideValueIterator<'model_params> {
+    model_params: &'model_params LlamaModelParams,
     current: usize,
 }
 

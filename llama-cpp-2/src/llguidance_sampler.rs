@@ -145,7 +145,7 @@ static mut LLG_SAMPLER_I: llama_cpp_sys_2::llama_sampler_i = llama_cpp_sys_2::ll
 };
 
 /// Create an llguidance-based constrained decoding sampler.
-pub(crate) fn create_llg_sampler(
+pub fn create_llg_sampler(
     model: &LlamaModel,
     grammar_kind: &str,
     grammar_data: &str,
