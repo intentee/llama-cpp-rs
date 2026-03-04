@@ -5,7 +5,7 @@ edition.workspace = true
 publish = false
 
 [dependencies]
-llama-cpp-2 = { path = "../../llama-cpp-2", version = "0.1.86" }
+llama-cpp-2 = { workspace = true }
 hf-hub = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 anyhow = { workspace = true }

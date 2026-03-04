@@ -1,86 +1,82 @@
 //! # Usage
 //!
-//! This is just about the smallest possible way to do inference. To fetch a model from hugging face:
+//! Minimal inference example using llama-cpp-2. Downloads a model from
+//! HuggingFace on first run:
 //!
 //! ```console
-//! git clone --recursive https://github.com/utilityai/llama-cpp-rs
-//! cd llama-cpp-rs/examples/usage
-//! wget https://huggingface.co/Qwen/Qwen2-1.5B-Instruct-GGUF/resolve/main/qwen2-1_5b-instruct-q4_0.gguf
-//! cargo run --example usage -- qwen2-1_5b-instruct-q4_0.gguf
+//! cargo run --example usage -- "What is the meaning of life?"
 //! ```
+
 use llama_cpp_2::context::params::LlamaContextParams;
 use llama_cpp_2::llama_backend::LlamaBackend;
 use llama_cpp_2::llama_batch::LlamaBatch;
-use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::model::params::LlamaModelParams;
-use llama_cpp_2::model::{AddBos, Special};
+use llama_cpp_2::model::{AddBos, LlamaChatMessage, LlamaModel};
 use llama_cpp_2::sampling::LlamaSampler;
 use std::io::Write;
 
+const HF_REPO: &str = "unsloth/Qwen3.5-0.8B-GGUF";
+const HF_MODEL: &str = "Qwen3.5-0.8B-Q4_K_M.gguf";
+
 #[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
-fn main() {
-    let model_path = std::env::args().nth(1).expect("Please specify model path");
-    let backend = LlamaBackend::init().unwrap();
-    let params = LlamaModelParams::default();
+fn main() -> anyhow::Result<()> {
+    let user_prompt = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "Hello! How are you?".to_string());
 
-    let prompt =
-        "<|im_start|>user\nHello! how are you?<|im_end|>\n<|im_start|>assistant\n".to_string();
-    LlamaContextParams::default();
-    let model =
-        LlamaModel::load_from_file(&backend, model_path, &params).expect("unable to load model");
-    let ctx_params = LlamaContextParams::default();
-    let mut ctx = model
-        .new_context(&backend, ctx_params)
-        .expect("unable to create the llama_context");
-    let tokens_list = model
-        .str_to_token(&prompt, AddBos::Always)
-        .unwrap_or_else(|_| panic!("failed to tokenize {prompt}"));
-    let n_len = 1024;
+    let model_path = hf_hub::api::sync::ApiBuilder::new()
+        .with_progress(true)
+        .build()?
+        .model(HF_REPO.to_string())
+        .get(HF_MODEL)?;
 
-    // create a llama_batch with size 512
-    // we use this object to submit token data for decoding
+    let backend = LlamaBackend::init()?;
+    let model_params = LlamaModelParams::default();
+    let model = LlamaModel::load_from_file(&backend, &model_path, &model_params)?;
+    let context_params = LlamaContextParams::default();
+    let mut context = model.new_context(&backend, context_params)?;
+
+    let chat_template = model.chat_template(None)?;
+    let messages = vec![
+        LlamaChatMessage::new("user".to_string(), user_prompt)?,
+    ];
+    let prompt = model.apply_chat_template(&chat_template, &messages, true)?;
+
+    let tokens = model.str_to_token(&prompt, AddBos::Always)?;
     let mut batch = LlamaBatch::new(512, 1);
 
-    let last_index = tokens_list.len() as i32 - 1;
-    for (i, token) in (0_i32..).zip(tokens_list.into_iter()) {
-        // llama_decode will output logits only for the last token of the prompt
-        let is_last = i == last_index;
-        batch.add(token, i, &[0], is_last).unwrap();
+    let last_index = tokens.len() as i32 - 1;
+    for (position, token) in (0_i32..).zip(tokens.into_iter()) {
+        let output_logits = position == last_index;
+        batch.add(token, position, &[0], output_logits)?;
     }
-    ctx.decode(&mut batch).expect("llama_decode() failed");
+    context.decode(&mut batch)?;
 
-    let mut n_cur = batch.n_tokens();
-
-    // The `Decoder`
     let mut decoder = encoding_rs::UTF_8.new_decoder();
     let mut sampler = LlamaSampler::greedy();
+    let mut position = batch.n_tokens();
+    let max_tokens = 1024;
 
-    while n_cur <= n_len {
-        // sample the next token
-        {
-            let token = sampler.sample(&ctx, batch.n_tokens() - 1);
+    while position <= max_tokens {
+        let token = sampler.sample(&context, batch.n_tokens() - 1);
+        sampler.accept(token);
 
-            sampler.accept(token);
-
-            // is it an end of stream?
-            if token == model.token_eos() {
-                eprintln!();
-                break;
-            }
-
-            let output_string = model
-                .token_to_piece(token, &mut decoder, true, None)
-                .unwrap();
-            // use `Decoder.decode_to_string()` to avoid the intermediate buffer
-            print!("{output_string}");
-            std::io::stdout().flush().unwrap();
-
-            batch.clear();
-            batch.add(token, n_cur, &[0], true).unwrap();
+        if model.is_eog_token(token) {
+            break;
         }
 
-        n_cur += 1;
+        let piece = model.token_to_piece(token, &mut decoder, true, None)?;
+        print!("{piece}");
+        std::io::stdout().flush()?;
 
-        ctx.decode(&mut batch).expect("failed to eval");
+        batch.clear();
+        batch.add(token, position, &[0], true)?;
+        position += 1;
+
+        context.decode(&mut batch)?;
     }
+
+    println!();
+
+    Ok(())
 }
