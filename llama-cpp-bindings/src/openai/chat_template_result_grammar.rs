@@ -127,3 +127,66 @@ impl ChatTemplateResult {
         Ok((Some(grammar_sampler), preserved))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{anchor_pattern, regex_escape};
+
+    #[test]
+    fn regex_escape_special_characters() {
+        assert_eq!(regex_escape("."), "\\.");
+        assert_eq!(regex_escape("^"), "\\^");
+        assert_eq!(regex_escape("$"), "\\$");
+        assert_eq!(regex_escape("|"), "\\|");
+        assert_eq!(regex_escape("("), "\\(");
+        assert_eq!(regex_escape(")"), "\\)");
+        assert_eq!(regex_escape("*"), "\\*");
+        assert_eq!(regex_escape("+"), "\\+");
+        assert_eq!(regex_escape("?"), "\\?");
+        assert_eq!(regex_escape("["), "\\[");
+        assert_eq!(regex_escape("]"), "\\]");
+        assert_eq!(regex_escape("{"), "\\{");
+        assert_eq!(regex_escape("}"), "\\}");
+        assert_eq!(regex_escape("\\"), "\\\\");
+    }
+
+    #[test]
+    fn regex_escape_normal_text() {
+        assert_eq!(regex_escape("hello world"), "hello world");
+    }
+
+    #[test]
+    fn regex_escape_empty_string() {
+        assert_eq!(regex_escape(""), "");
+    }
+
+    #[test]
+    fn regex_escape_mixed_text() {
+        assert_eq!(regex_escape("price: $5.00"), "price: \\$5\\.00");
+    }
+
+    #[test]
+    fn anchor_pattern_empty_string() {
+        assert_eq!(anchor_pattern(""), "^$");
+    }
+
+    #[test]
+    fn anchor_pattern_already_anchored() {
+        assert_eq!(anchor_pattern("^hello$"), "^hello$");
+    }
+
+    #[test]
+    fn anchor_pattern_needs_start_anchor() {
+        assert_eq!(anchor_pattern("hello$"), "^hello$");
+    }
+
+    #[test]
+    fn anchor_pattern_needs_end_anchor() {
+        assert_eq!(anchor_pattern("^hello"), "^hello$");
+    }
+
+    #[test]
+    fn anchor_pattern_needs_both_anchors() {
+        assert_eq!(anchor_pattern("hello"), "^hello$");
+    }
+}

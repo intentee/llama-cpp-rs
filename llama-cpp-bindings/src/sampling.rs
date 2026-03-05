@@ -652,3 +652,89 @@ impl Drop for LlamaSampler {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::LlamaSampler;
+    use crate::GrammarError;
+
+    #[test]
+    fn sanitize_grammar_strings_valid() {
+        let result = LlamaSampler::sanitize_grammar_strings("root ::= \"hello\"", "root");
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn sanitize_grammar_strings_root_not_found() {
+        let result = LlamaSampler::sanitize_grammar_strings("expr ::= \"hello\"", "root");
+
+        assert_eq!(result.err(), Some(GrammarError::RootNotFound));
+    }
+
+    #[test]
+    fn sanitize_grammar_strings_null_byte_in_grammar() {
+        let result = LlamaSampler::sanitize_grammar_strings("root ::= \"\0\"", "root");
+
+        assert_eq!(result.err(), Some(GrammarError::GrammarNullBytes));
+    }
+
+    #[test]
+    fn sanitize_grammar_strings_null_byte_in_root() {
+        let result = LlamaSampler::sanitize_grammar_strings("ro\0ot ::= \"hello\"", "ro\0ot");
+
+        assert_eq!(result.err(), Some(GrammarError::GrammarNullBytes));
+    }
+
+    #[test]
+    fn sanitize_trigger_words_valid() {
+        let words: Vec<&[u8]> = vec![b"hello", b"world"];
+        let result = LlamaSampler::sanitize_trigger_words(words);
+
+        assert!(result.is_ok());
+        assert_eq!(result.expect("valid trigger words").len(), 2);
+    }
+
+    #[test]
+    fn sanitize_trigger_words_empty_list() {
+        let words: Vec<&[u8]> = vec![];
+        let result = LlamaSampler::sanitize_trigger_words(words);
+
+        assert!(result.is_ok());
+        assert!(result.expect("valid trigger words").is_empty());
+    }
+
+    #[test]
+    fn sanitize_trigger_words_null_byte() {
+        let words: Vec<&[u8]> = vec![b"hel\0lo"];
+        let result = LlamaSampler::sanitize_trigger_words(words);
+
+        assert_eq!(result.err(), Some(GrammarError::TriggerWordNullBytes));
+    }
+
+    #[test]
+    fn sanitize_trigger_patterns_valid() {
+        let patterns = vec!["^hello$".to_string(), "world.*".to_string()];
+        let result = LlamaSampler::sanitize_trigger_patterns(&patterns);
+
+        assert!(result.is_ok());
+        assert_eq!(result.expect("valid trigger patterns").len(), 2);
+    }
+
+    #[test]
+    fn sanitize_trigger_patterns_empty_list() {
+        let patterns: Vec<String> = vec![];
+        let result = LlamaSampler::sanitize_trigger_patterns(&patterns);
+
+        assert!(result.is_ok());
+        assert!(result.expect("valid trigger patterns").is_empty());
+    }
+
+    #[test]
+    fn sanitize_trigger_patterns_null_byte() {
+        let patterns = vec!["hel\0lo".to_string()];
+        let result = LlamaSampler::sanitize_trigger_patterns(&patterns);
+
+        assert_eq!(result.err(), Some(GrammarError::GrammarNullBytes));
+    }
+}
