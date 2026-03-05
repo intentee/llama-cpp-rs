@@ -45,4 +45,5 @@ pub use llama_utility::{
     mmap_supported, status_is_ok, status_to_i32,
 };
 
-pub use log_options::{LogOptions, send_logs_to_tracing};
+pub use log::send_logs_to_tracing;
+pub use log_options::LogOptions;
