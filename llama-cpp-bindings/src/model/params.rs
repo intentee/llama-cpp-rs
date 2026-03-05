@@ -431,3 +431,146 @@ impl Default for LlamaModelParams {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{LlamaModelParams, LlamaSplitMode, LlamaSplitModeParseError};
+
+    #[test]
+    fn split_mode_try_from_i32_none() {
+        assert_eq!(LlamaSplitMode::try_from(0_i32), Ok(LlamaSplitMode::None));
+    }
+
+    #[test]
+    fn split_mode_try_from_i32_layer() {
+        assert_eq!(LlamaSplitMode::try_from(1_i32), Ok(LlamaSplitMode::Layer));
+    }
+
+    #[test]
+    fn split_mode_try_from_i32_row() {
+        assert_eq!(LlamaSplitMode::try_from(2_i32), Ok(LlamaSplitMode::Row));
+    }
+
+    #[test]
+    fn split_mode_try_from_i32_invalid() {
+        assert_eq!(
+            LlamaSplitMode::try_from(99_i32),
+            Err(LlamaSplitModeParseError(99))
+        );
+    }
+
+    #[test]
+    fn split_mode_try_from_u32_all_variants() {
+        assert_eq!(LlamaSplitMode::try_from(0_u32), Ok(LlamaSplitMode::None));
+        assert_eq!(LlamaSplitMode::try_from(1_u32), Ok(LlamaSplitMode::Layer));
+        assert_eq!(LlamaSplitMode::try_from(2_u32), Ok(LlamaSplitMode::Row));
+    }
+
+    #[test]
+    fn split_mode_try_from_u32_invalid() {
+        assert!(LlamaSplitMode::try_from(99_u32).is_err());
+    }
+
+    #[test]
+    fn split_mode_into_i32_roundtrip() {
+        let variants = [
+            (LlamaSplitMode::None, 0_i32),
+            (LlamaSplitMode::Layer, 1_i32),
+            (LlamaSplitMode::Row, 2_i32),
+        ];
+
+        for (variant, expected) in variants {
+            let as_i32: i32 = variant.into();
+            assert_eq!(as_i32, expected);
+            assert_eq!(LlamaSplitMode::try_from(as_i32), Ok(variant));
+        }
+    }
+
+    #[test]
+    fn split_mode_into_u32_roundtrip() {
+        let variants = [
+            (LlamaSplitMode::None, 0_u32),
+            (LlamaSplitMode::Layer, 1_u32),
+            (LlamaSplitMode::Row, 2_u32),
+        ];
+
+        for (variant, expected) in variants {
+            let as_u32: u32 = variant.into();
+            assert_eq!(as_u32, expected);
+            assert_eq!(LlamaSplitMode::try_from(as_u32), Ok(variant));
+        }
+    }
+
+    #[test]
+    fn split_mode_default_is_layer() {
+        assert_eq!(LlamaSplitMode::default(), LlamaSplitMode::Layer);
+    }
+
+    #[test]
+    fn default_params_have_expected_values() {
+        let params = LlamaModelParams::default();
+
+        assert_eq!(params.n_gpu_layers(), -1);
+        assert_eq!(params.main_gpu(), 0);
+        assert!(!params.vocab_only());
+        assert!(params.use_mmap());
+        assert!(!params.use_mlock());
+        assert_eq!(params.split_mode(), Ok(LlamaSplitMode::Layer));
+        assert!(params.devices().is_empty());
+    }
+
+    #[test]
+    fn n_gpu_layers_roundtrip() {
+        let params = LlamaModelParams::default().with_n_gpu_layers(32);
+
+        assert_eq!(params.n_gpu_layers(), 32);
+    }
+
+    #[test]
+    fn n_gpu_layers_overflow_clamps_to_max() {
+        let params = LlamaModelParams::default().with_n_gpu_layers(u32::MAX);
+
+        assert_eq!(params.n_gpu_layers(), i32::MAX);
+    }
+
+    #[test]
+    fn main_gpu_roundtrip() {
+        let params = LlamaModelParams::default().with_main_gpu(2);
+
+        assert_eq!(params.main_gpu(), 2);
+    }
+
+    #[test]
+    fn vocab_only_roundtrip() {
+        let params = LlamaModelParams::default().with_vocab_only(true);
+
+        assert!(params.vocab_only());
+    }
+
+    #[test]
+    fn use_mlock_roundtrip() {
+        let params = LlamaModelParams::default().with_use_mlock(true);
+
+        assert!(params.use_mlock());
+    }
+
+    #[test]
+    fn split_mode_roundtrip() {
+        let params = LlamaModelParams::default().with_split_mode(LlamaSplitMode::Row);
+
+        assert_eq!(params.split_mode(), Ok(LlamaSplitMode::Row));
+    }
+
+    #[test]
+    fn debug_format_includes_fields() {
+        let params = LlamaModelParams::default();
+        let debug_output = format!("{params:?}");
+
+        assert!(debug_output.contains("n_gpu_layers"));
+        assert!(debug_output.contains("main_gpu"));
+        assert!(debug_output.contains("vocab_only"));
+        assert!(debug_output.contains("use_mmap"));
+        assert!(debug_output.contains("use_mlock"));
+        assert!(debug_output.contains("split_mode"));
+    }
+}
