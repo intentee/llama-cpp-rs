@@ -793,7 +793,7 @@ impl LlamaModel {
 }
 
 /// Generic helper function for extracting string values from the C API
-/// This are specifically useful for the the metadata functions, where we pass in a buffer
+/// These are specifically useful for the metadata functions, where we pass in a buffer
 /// to be populated by a string, not yet knowing if the buffer is large enough.
 /// If the buffer was not large enough, we get the correct length back, which can be used to
 /// construct a buffer of appropriate size.

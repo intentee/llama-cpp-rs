@@ -121,11 +121,10 @@ impl State {
     }
 
     fn generate_log(target: Module, level: llama_cpp_bindings_sys::ggml_log_level, text: &str) {
-        // Annoying but tracing requires that the provided target name is a string literal and
-        // even &'static str isn't enough so we have to duplicate the generation AND we can't even
-        // extract the interrior module within llama.cpp/ggml to be able to propagate it forward.
-        // This happens because the target is part of a static variable injected by the macro that's
-        // initialized with said target.
+        // Tracing requires the target name to be a string literal (not even &'static str), so
+        // the match arms below are duplicated per module. The interior submodule name from
+        // llama.cpp/ggml cannot be propagated as a target because it is baked into a static
+        // variable by the tracing macro at compile time.
 
         let (module, text) = text
             .char_indices()
@@ -540,7 +539,7 @@ mod tests {
             log_ptr,
         );
 
-        // Not sure where the extra \n comes from.
+        // The CONT message carries its own trailing newline, and the flush appends another.
         assert_eq!(*logger.logs.lock().unwrap(), vec!["Hello world\n\n"]);
     }
 
