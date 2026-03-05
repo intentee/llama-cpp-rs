@@ -15,7 +15,14 @@ pub mod error;
 pub mod llama_backend;
 pub mod llama_backend_device;
 pub mod llama_batch;
-pub mod llama_utility;
+pub mod llama_utility_ggml_time_us;
+pub mod llama_utility_json_schema_to_grammar;
+pub mod llama_utility_llama_time_us;
+pub mod llama_utility_max_devices;
+pub mod llama_utility_mlock_supported;
+pub mod llama_utility_mmap_supported;
+pub mod llama_utility_status_is_ok;
+pub mod llama_utility_status_to_i32;
 #[cfg(feature = "llguidance")]
 pub mod llguidance_sampler;
 pub(crate) mod log;
@@ -40,10 +47,14 @@ pub use llama_backend_device::{
     LlamaBackendDevice, LlamaBackendDeviceType, list_llama_ggml_backend_devices,
 };
 
-pub use llama_utility::{
-    ggml_time_us, json_schema_to_grammar, llama_time_us, max_devices, mlock_supported,
-    mmap_supported, status_is_ok, status_to_i32,
-};
+pub use llama_utility_ggml_time_us::ggml_time_us;
+pub use llama_utility_json_schema_to_grammar::json_schema_to_grammar;
+pub use llama_utility_llama_time_us::llama_time_us;
+pub use llama_utility_max_devices::max_devices;
+pub use llama_utility_mlock_supported::mlock_supported;
+pub use llama_utility_mmap_supported::mmap_supported;
+pub use llama_utility_status_is_ok::status_is_ok;
+pub use llama_utility_status_to_i32::status_to_i32;
 
 pub use log::send_logs_to_tracing;
 pub use log_options::LogOptions;
