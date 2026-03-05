@@ -9,7 +9,7 @@ use crate::model::LlamaModel;
 use crate::token::LlamaToken;
 use crate::token::data_array::LlamaTokenDataArray;
 use crate::token::logit_bias::LlamaLogitBias;
-use crate::{GrammarError, SamplerAcceptError, status_is_ok, status_to_i32};
+use crate::{GrammarError, SamplerAcceptError, SamplingError, status_is_ok, status_to_i32};
 
 /// A safe wrapper around `llama_sampler`.
 pub struct LlamaSampler {
@@ -426,11 +426,7 @@ impl LlamaSampler {
             return Err(GrammarError::GrammarNullBytes);
         }
 
-        // SAFETY: null byte check precedes this conversion, CString::new cannot fail
-        Ok((
-            CString::new(grammar_str).expect("grammar_str contains no null bytes"),
-            CString::new(grammar_root).expect("grammar_root contains no null bytes"),
-        ))
+        Ok((CString::new(grammar_str)?, CString::new(grammar_root)?))
     }
 
     fn sanitize_trigger_words(
@@ -443,11 +439,10 @@ impl LlamaSampler {
         {
             return Err(GrammarError::TriggerWordNullBytes);
         }
-        // SAFETY: null byte check precedes this conversion, CString::new cannot fail
-        Ok(trigger_words
+        trigger_words
             .into_iter()
-            .map(|word| CString::new(word.as_ref()).expect("trigger word contains no null bytes"))
-            .collect())
+            .map(|word| Ok(CString::new(word.as_ref())?))
+            .collect()
     }
 
     fn sanitize_trigger_patterns(
@@ -458,8 +453,7 @@ impl LlamaSampler {
             if pattern.contains('\0') {
                 return Err(GrammarError::GrammarNullBytes);
             }
-            // SAFETY: null byte check precedes this conversion, CString::new cannot fail
-            patterns.push(CString::new(pattern.as_str()).expect("pattern contains no null bytes"));
+            patterns.push(CString::new(pattern.as_str())?);
         }
         Ok(patterns)
     }
@@ -486,13 +480,13 @@ impl LlamaSampler {
         let mut seq_breaker_pointers: Vec<*const c_char> =
             seq_breakers.iter().map(|s| s.as_ptr()).collect();
 
+        let n_ctx_train = model.n_ctx_train().try_into().map_err(|_| {
+            GrammarError::IntegerOverflow("n_ctx_train exceeds i32::MAX".to_string())
+        })?;
         let sampler = unsafe {
             llama_cpp_bindings_sys::llama_sampler_init_dry(
                 model.vocab_ptr(),
-                model
-                    .n_ctx_train()
-                    .try_into()
-                    .expect("n_ctx_train exceeds i32::MAX"),
+                n_ctx_train,
                 multiplier,
                 base,
                 allowed_length,
@@ -610,9 +604,8 @@ impl LlamaSampler {
     /// - ``n_vocab``: [`LlamaModel::n_vocab`]
     /// - ``biases``: Slice of [`LlamaLogitBias`] values specifying token-bias pairs
     ///
-    /// # Panics
-    ///
-    /// Panics if `biases.len()` exceeds `i32::MAX`.
+    /// # Errors
+    /// Returns [`SamplingError::IntegerOverflow`] if `biases.len()` exceeds `i32::MAX`.
     ///
     /// # Example
     /// ```rust
@@ -625,23 +618,21 @@ impl LlamaSampler {
     /// ];
     ///
     /// // Assuming vocab_size of 32000
-    /// let sampler = LlamaSampler::logit_bias(32000, &biases);
+    /// let sampler = LlamaSampler::logit_bias(32000, &biases).unwrap();
     /// ```
-    #[must_use]
-    pub fn logit_bias(n_vocab: i32, biases: &[LlamaLogitBias]) -> Self {
+    pub fn logit_bias(n_vocab: i32, biases: &[LlamaLogitBias]) -> Result<Self, SamplingError> {
+        let bias_count = i32::try_from(biases.len()).map_err(|_| {
+            SamplingError::IntegerOverflow("bias count exceeds i32::MAX".to_string())
+        })?;
         let data = biases
             .as_ptr()
             .cast::<llama_cpp_bindings_sys::llama_logit_bias>();
 
         let sampler = unsafe {
-            llama_cpp_bindings_sys::llama_sampler_init_logit_bias(
-                n_vocab,
-                i32::try_from(biases.len()).expect("bias count exceeds i32::MAX"),
-                data,
-            )
+            llama_cpp_bindings_sys::llama_sampler_init_logit_bias(n_vocab, bias_count, data)
         };
 
-        Self { sampler }
+        Ok(Self { sampler })
     }
 }
 
@@ -807,7 +798,8 @@ mod tests {
 
     #[test]
     fn logit_bias_sampler_empty_biases() {
-        let _sampler = LlamaSampler::logit_bias(32000, &[]);
+        let _sampler = LlamaSampler::logit_bias(32000, &[])
+            .expect("test: logit_bias with empty biases should succeed");
     }
 
     #[test]
@@ -819,7 +811,8 @@ mod tests {
             LlamaLogitBias::new(LlamaToken::new(1), 1.5),
             LlamaLogitBias::new(LlamaToken::new(2), -1.0),
         ];
-        let _sampler = LlamaSampler::logit_bias(32000, &biases);
+        let _sampler = LlamaSampler::logit_bias(32000, &biases)
+            .expect("test: logit_bias with biases should succeed");
     }
 
     #[test]
