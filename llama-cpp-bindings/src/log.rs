@@ -181,7 +181,7 @@ impl State {
                 inferred_level = level,
                 text = text,
                 origin = "crate",
-                "llma.cpp sent out a CONT log without any previously buffered message"
+                "llama.cpp sent out a CONT log without any previously buffered message"
             );
             *lock = Some((level, text.to_string()));
         }
@@ -202,7 +202,7 @@ impl State {
                 level = previous_log_level,
                 text = &buffer,
                 origin = "crate",
-                "Message buffered unnnecessarily due to missing newline and not followed by a CONT"
+                "Message buffered unnecessarily due to missing newline and not followed by a CONT"
             );
             Self::generate_log(self.module, previous_log_level, buffer.as_str());
         }

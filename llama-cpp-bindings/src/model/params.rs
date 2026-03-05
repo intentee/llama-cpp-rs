@@ -203,8 +203,6 @@ impl LlamaModelParams {
 
         // set the pointer to the (potentially) new vector
         self.params.kv_overrides = self.kv_overrides.as_ptr();
-
-        eprintln!("saved ptr: {:?}", self.params.kv_overrides);
     }
 }
 
