@@ -4,23 +4,39 @@ use std::num::NonZeroU16;
 use std::os::raw::c_int;
 use std::path::Path;
 use std::ptr::{self, NonNull};
-use std::slice;
-use std::str::Utf8Error;
 
 use crate::context::LlamaContext;
 use crate::context::params::LlamaContextParams;
 use crate::llama_backend::LlamaBackend;
-use crate::model::params::LlamaModelParams;
-use crate::openai::{ChatParseStateOaicompat, OpenAIChatTemplateParams};
+use crate::openai::OpenAIChatTemplateParams;
 use crate::token::LlamaToken;
 use crate::token_type::LlamaTokenAttrs;
 use crate::{
-    ApplyChatTemplateError, ChatParseError, ChatTemplateError, LlamaContextLoadError,
-    LlamaLoraAdapterInitError, LlamaModelLoadError, MetaValError, NewLlamaChatMessageError,
-    StringToTokenError, TokenToStringError, status_is_ok, status_to_i32,
+    ApplyChatTemplateError, ChatTemplateError, LlamaContextLoadError, LlamaLoraAdapterInitError,
+    LlamaModelLoadError, MetaValError, StringToTokenError, TokenToStringError,
 };
 
+pub mod add_bos;
+pub mod chat_template_result;
+pub mod grammar_trigger;
+pub mod llama_chat_message;
+pub mod llama_chat_template;
+pub mod llama_lora_adapter;
 pub mod params;
+pub mod rope_type;
+pub mod vocab_type;
+
+pub use add_bos::AddBos;
+pub use chat_template_result::ChatTemplateResult;
+pub use grammar_trigger::{GrammarTrigger, GrammarTriggerType};
+pub use llama_chat_message::LlamaChatMessage;
+pub use llama_chat_template::LlamaChatTemplate;
+pub use llama_lora_adapter::LlamaLoraAdapter;
+pub use rope_type::RopeType;
+pub use vocab_type::{LlamaTokenTypeFromIntError, VocabType};
+
+use chat_template_result::{new_empty_chat_template_raw_result, parse_chat_template_raw_result};
+use params::LlamaModelParams;
 
 /// A safe wrapper around `llama_model`.
 #[derive(Debug)]
@@ -28,308 +44,6 @@ pub mod params;
 pub struct LlamaModel {
     /// Raw pointer to the underlying `llama_model`.
     pub model: NonNull<llama_cpp_bindings_sys::llama_model>,
-}
-
-/// A safe wrapper around `llama_lora_adapter`.
-#[derive(Debug)]
-#[repr(transparent)]
-pub struct LlamaLoraAdapter {
-    /// Raw pointer to the underlying `llama_adapter_lora`.
-    pub lora_adapter: NonNull<llama_cpp_bindings_sys::llama_adapter_lora>,
-}
-
-/// A performance-friendly wrapper around [`LlamaModel::chat_template`] which is then
-/// fed into [`LlamaModel::apply_chat_template`] to convert a list of messages into an LLM
-/// prompt. Internally the template is stored as a `CString` to avoid round-trip conversions
-/// within the FFI.
-#[derive(Eq, PartialEq, Clone, PartialOrd, Ord, Hash)]
-pub struct LlamaChatTemplate(CString);
-
-impl LlamaChatTemplate {
-    /// Create a new template from a string. This can either be the name of a llama.cpp [chat template](https://github.com/ggerganov/llama.cpp/blob/8a8c4ceb6050bd9392609114ca56ae6d26f5b8f5/src/llama-chat.cpp#L27-L61)
-    /// like "chatml" or "llama3" or an actual Jinja template for llama.cpp to interpret.
-    ///
-    /// # Errors
-    /// Returns an error if the template string contains null bytes.
-    pub fn new(template: &str) -> Result<Self, std::ffi::NulError> {
-        Ok(Self(CString::new(template)?))
-    }
-
-    /// Accesses the template as a c string reference.
-    #[must_use]
-    pub fn as_c_str(&self) -> &CStr {
-        &self.0
-    }
-
-    /// Attempts to convert the `CString` into a Rust str reference.
-    ///
-    /// # Errors
-    /// Returns an error if the template is not valid UTF-8.
-    pub fn to_str(&self) -> Result<&str, Utf8Error> {
-        self.0.to_str()
-    }
-
-    /// Convenience method to create an owned String.
-    ///
-    /// # Errors
-    /// Returns an error if the template is not valid UTF-8.
-    pub fn to_string(&self) -> Result<String, Utf8Error> {
-        self.to_str().map(str::to_string)
-    }
-}
-
-impl std::fmt::Debug for LlamaChatTemplate {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-/// A Safe wrapper around `llama_chat_message`
-#[derive(Debug, Eq, PartialEq, Clone)]
-pub struct LlamaChatMessage {
-    role: CString,
-    content: CString,
-}
-
-impl LlamaChatMessage {
-    /// Create a new `LlamaChatMessage`
-    ///
-    /// # Errors
-    /// If either of ``role`` or ``content`` contain null bytes.
-    pub fn new(role: String, content: String) -> Result<Self, NewLlamaChatMessageError> {
-        Ok(Self {
-            role: CString::new(role)?,
-            content: CString::new(content)?,
-        })
-    }
-}
-
-/// Grammar trigger kinds used for lazy grammar sampling.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GrammarTriggerType {
-    /// Trigger on a specific token.
-    Token = 0,
-    /// Trigger on a literal word.
-    Word = 1,
-    /// Trigger on a regex pattern.
-    Pattern = 2,
-    /// Trigger on a fully anchored regex pattern.
-    PatternFull = 3,
-}
-
-/// Lazy grammar trigger from chat template generation.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GrammarTrigger {
-    /// Trigger kind.
-    pub trigger_type: GrammarTriggerType,
-    /// Trigger text or pattern.
-    pub value: String,
-    /// Token id for token triggers.
-    pub token: Option<LlamaToken>,
-}
-
-/// Result of applying a chat template with tool grammar support.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChatTemplateResult {
-    /// Rendered chat prompt.
-    pub prompt: String,
-    /// Optional grammar generated from tool definitions.
-    pub grammar: Option<String>,
-    /// Whether to use lazy grammar sampling.
-    pub grammar_lazy: bool,
-    /// Lazy grammar triggers derived from the template.
-    pub grammar_triggers: Vec<GrammarTrigger>,
-    /// Tokens that should be preserved for sampling.
-    pub preserved_tokens: Vec<String>,
-    /// Additional stop sequences added by the template.
-    pub additional_stops: Vec<String>,
-    /// Chat format used for parsing responses.
-    pub chat_format: i32,
-    /// Optional serialized PEG parser for tool-call parsing.
-    pub parser: Option<String>,
-    /// Whether the parser expects a forced-open thinking block.
-    pub thinking_forced_open: bool,
-    /// Whether tool calls should be parsed from the response.
-    pub parse_tool_calls: bool,
-}
-
-/// The Rope type that's used within the model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RopeType {
-    /// Standard rotary positional encoding.
-    Norm,
-    /// GPT-NeoX style rotary positional encoding.
-    NeoX,
-    /// Multi-dimensional rotary positional encoding.
-    MRope,
-    /// Vision model rotary positional encoding.
-    Vision,
-}
-
-/// How to determine if we should prepend a bos token to tokens
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AddBos {
-    /// Add the beginning of stream token to the start of the string.
-    Always,
-    /// Do not add the beginning of stream token to the start of the string.
-    Never,
-}
-
-fn new_empty_chat_template_raw_result() -> llama_cpp_bindings_sys::llama_rs_chat_template_result {
-    llama_cpp_bindings_sys::llama_rs_chat_template_result {
-        prompt: ptr::null_mut(),
-        grammar: ptr::null_mut(),
-        parser: ptr::null_mut(),
-        chat_format: 0,
-        thinking_forced_open: false,
-        grammar_lazy: false,
-        grammar_triggers: ptr::null_mut(),
-        grammar_triggers_count: 0,
-        preserved_tokens: ptr::null_mut(),
-        preserved_tokens_count: 0,
-        additional_stops: ptr::null_mut(),
-        additional_stops_count: 0,
-    }
-}
-
-/// # Safety
-///
-/// `raw_cstr_array` must point to `count` valid, null-terminated C strings.
-unsafe fn parse_raw_cstr_array(
-    raw_cstr_array: *const *mut c_char,
-    count: usize,
-) -> Result<Vec<String>, ApplyChatTemplateError> {
-    if count == 0 {
-        return Ok(Vec::new());
-    }
-
-    if raw_cstr_array.is_null() {
-        return Err(ApplyChatTemplateError::InvalidGrammarTriggerType);
-    }
-
-    let raw_entries = unsafe { slice::from_raw_parts(raw_cstr_array, count) };
-    let mut parsed = Vec::with_capacity(raw_entries.len());
-
-    for entry in raw_entries {
-        if entry.is_null() {
-            return Err(ApplyChatTemplateError::InvalidGrammarTriggerType);
-        }
-        let bytes = unsafe { CStr::from_ptr(*entry) }.to_bytes().to_vec();
-        parsed.push(String::from_utf8(bytes)?);
-    }
-
-    Ok(parsed)
-}
-
-/// # Safety
-///
-/// `raw_triggers` must point to `count` valid `llama_rs_grammar_trigger` structs.
-unsafe fn parse_raw_grammar_triggers(
-    raw_triggers: *const llama_cpp_bindings_sys::llama_rs_grammar_trigger,
-    count: usize,
-) -> Result<Vec<GrammarTrigger>, ApplyChatTemplateError> {
-    if count == 0 {
-        return Ok(Vec::new());
-    }
-
-    if raw_triggers.is_null() {
-        return Err(ApplyChatTemplateError::InvalidGrammarTriggerType);
-    }
-
-    let triggers = unsafe { slice::from_raw_parts(raw_triggers, count) };
-    let mut parsed = Vec::with_capacity(triggers.len());
-
-    for trigger in triggers {
-        let trigger_type = match trigger.type_ {
-            0 => GrammarTriggerType::Token,
-            1 => GrammarTriggerType::Word,
-            2 => GrammarTriggerType::Pattern,
-            3 => GrammarTriggerType::PatternFull,
-            _ => return Err(ApplyChatTemplateError::InvalidGrammarTriggerType),
-        };
-        let value = if trigger.value.is_null() {
-            return Err(ApplyChatTemplateError::InvalidGrammarTriggerType);
-        } else {
-            let bytes = unsafe { CStr::from_ptr(trigger.value) }.to_bytes().to_vec();
-            String::from_utf8(bytes)?
-        };
-        let token = if trigger_type == GrammarTriggerType::Token {
-            Some(LlamaToken(trigger.token))
-        } else {
-            None
-        };
-        parsed.push(GrammarTrigger {
-            trigger_type,
-            value,
-            token,
-        });
-    }
-
-    Ok(parsed)
-}
-
-fn parse_chat_template_raw_result(
-    ffi_return_code: llama_cpp_bindings_sys::llama_rs_status,
-    raw_result: *mut llama_cpp_bindings_sys::llama_rs_chat_template_result,
-    parse_tool_calls: bool,
-) -> Result<ChatTemplateResult, ApplyChatTemplateError> {
-    let result = (|| {
-        if !status_is_ok(ffi_return_code) {
-            return Err(ApplyChatTemplateError::FfiError(status_to_i32(
-                ffi_return_code,
-            )));
-        }
-
-        let raw = unsafe { &*raw_result };
-
-        if raw.prompt.is_null() {
-            return Err(ApplyChatTemplateError::NullResult);
-        }
-
-        let prompt_bytes = unsafe { CStr::from_ptr(raw.prompt) }.to_bytes().to_vec();
-        let prompt = String::from_utf8(prompt_bytes)?;
-
-        let grammar = if raw.grammar.is_null() {
-            None
-        } else {
-            let grammar_bytes = unsafe { CStr::from_ptr(raw.grammar) }.to_bytes().to_vec();
-            Some(String::from_utf8(grammar_bytes)?)
-        };
-
-        let parser = if raw.parser.is_null() {
-            None
-        } else {
-            let parser_bytes = unsafe { CStr::from_ptr(raw.parser) }.to_bytes().to_vec();
-            Some(String::from_utf8(parser_bytes)?)
-        };
-
-        let grammar_triggers = unsafe {
-            parse_raw_grammar_triggers(raw.grammar_triggers, raw.grammar_triggers_count)
-        }?;
-
-        let preserved_tokens =
-            unsafe { parse_raw_cstr_array(raw.preserved_tokens, raw.preserved_tokens_count) }?;
-
-        let additional_stops =
-            unsafe { parse_raw_cstr_array(raw.additional_stops, raw.additional_stops_count) }?;
-
-        Ok(ChatTemplateResult {
-            prompt,
-            grammar,
-            grammar_lazy: raw.grammar_lazy,
-            grammar_triggers,
-            preserved_tokens,
-            additional_stops,
-            chat_format: raw.chat_format,
-            parser,
-            thinking_forced_open: raw.thinking_forced_open,
-            parse_tool_calls,
-        })
-    })();
-
-    unsafe { llama_cpp_bindings_sys::llama_rs_chat_template_result_free(raw_result) };
-
-    result
 }
 
 unsafe impl Send for LlamaModel {}
@@ -491,6 +205,7 @@ impl LlamaModel {
 
         // Safety: `size` < `capacity` and llama-cpp has initialized elements up to `size`
         unsafe { buffer.set_len(size) }
+
         Ok(buffer)
     }
 
@@ -547,6 +262,7 @@ impl LlamaModel {
         // but further decoding will happen on the next interation anyway
         let (_result, _somesize, _truthy) =
             decoder.decode_to_string(&bytes, &mut output_piece, false);
+
         Ok(output_piece)
     }
 
@@ -572,6 +288,7 @@ impl LlamaModel {
         special: bool,
         lstrip: Option<NonZeroU16>,
     ) -> Result<Vec<u8>, TokenToStringError> {
+        // SAFETY: `*` (0x2A) is never `\0`, so CString::new cannot fail here
         let string = CString::new(vec![b'*'; buffer_size]).expect("no null");
         let len = string.as_bytes().len();
         let len = c_int::try_from(len).expect("length fits into c_int");
@@ -596,6 +313,7 @@ impl LlamaModel {
                 let mut bytes = string.into_bytes();
                 let len = usize::try_from(size).expect("size is positive and fits into usize");
                 bytes.truncate(len);
+
                 Ok(bytes)
             }
         }
@@ -617,7 +335,6 @@ impl LlamaModel {
     /// If llama-cpp emits a vocab type that is not known to this library.
     #[must_use]
     pub fn vocab_type(&self) -> VocabType {
-        // llama_cpp_bindings_sys::llama_model_get_vocab
         let vocab_type = unsafe { llama_cpp_bindings_sys::llama_vocab_type(self.vocab_ptr()) };
         VocabType::try_from(vocab_type).expect("invalid vocab type")
     }
@@ -653,10 +370,9 @@ impl LlamaModel {
     /// Panics if the layer count returned by llama.cpp is negative.
     #[must_use]
     pub fn n_layer(&self) -> u32 {
-        // It's never possible for this to panic because while the API interface is defined as an int32_t,
-        // the field it's accessing is a uint32_t.
+        // llama.cpp API returns int32_t but the underlying field is uint32_t, so this is safe
         u32::try_from(unsafe { llama_cpp_bindings_sys::llama_model_n_layer(self.model.as_ptr()) })
-            .unwrap()
+            .expect("llama.cpp returns a positive value for n_layer")
     }
 
     /// Returns the number of attention heads within the model.
@@ -665,10 +381,9 @@ impl LlamaModel {
     /// Panics if the head count returned by llama.cpp is negative.
     #[must_use]
     pub fn n_head(&self) -> u32 {
-        // It's never possible for this to panic because while the API interface is defined as an int32_t,
-        // the field it's accessing is a uint32_t.
+        // llama.cpp API returns int32_t but the underlying field is uint32_t, so this is safe
         u32::try_from(unsafe { llama_cpp_bindings_sys::llama_model_n_head(self.model.as_ptr()) })
-            .unwrap()
+            .expect("llama.cpp returns a positive value for n_head")
     }
 
     /// Returns the number of KV attention heads.
@@ -677,10 +392,9 @@ impl LlamaModel {
     /// Panics if the KV head count returned by llama.cpp is negative.
     #[must_use]
     pub fn n_head_kv(&self) -> u32 {
-        // It's never possible for this to panic because while the API interface is defined as an int32_t,
-        // the field it's accessing is a uint32_t.
+        // llama.cpp API returns int32_t but the underlying field is uint32_t, so this is safe
         u32::try_from(unsafe { llama_cpp_bindings_sys::llama_model_n_head_kv(self.model.as_ptr()) })
-            .unwrap()
+            .expect("llama.cpp returns a positive value for n_head_kv")
     }
 
     /// Get metadata value as a string by key name
@@ -793,6 +507,7 @@ impl LlamaModel {
         } else {
             let chat_template_cstr = unsafe { CStr::from_ptr(result) };
             let chat_template = CString::new(chat_template_cstr.to_bytes())?;
+
             Ok(LlamaChatTemplate(chat_template))
         }
     }
@@ -826,6 +541,7 @@ impl LlamaModel {
         let model = NonNull::new(llama_model).ok_or(LlamaModelLoadError::NullResult)?;
 
         tracing::debug!(?path, "Loaded model");
+
         Ok(LlamaModel { model })
     }
 
@@ -859,6 +575,7 @@ impl LlamaModel {
         let adapter = NonNull::new(adapter).ok_or(LlamaLoraAdapterInitError::NullResult)?;
 
         tracing::debug!(?path, "Initialized lora adapter");
+
         Ok(LlamaLoraAdapter {
             lora_adapter: adapter,
         })
@@ -958,6 +675,7 @@ impl LlamaModel {
             assert_eq!(Ok(res), buff.len().try_into());
         }
         buff.truncate(res.try_into().expect("res is negative"));
+
         Ok(String::from_utf8(buff)?)
     }
 
@@ -1008,7 +726,7 @@ impl LlamaModel {
 
         let parse_tool_calls = tools_json.is_some_and(|tools| !tools.is_empty());
 
-        parse_chat_template_raw_result(rc, &raw mut raw_result, parse_tool_calls)
+        unsafe { parse_chat_template_raw_result(rc, &raw mut raw_result, parse_tool_calls) }
     }
 
     /// Apply the model chat template using OpenAI-compatible JSON messages.
@@ -1069,70 +787,7 @@ impl LlamaModel {
             )
         };
 
-        parse_chat_template_raw_result(rc, &raw mut raw_result, parse_tool_calls)
-    }
-}
-
-impl ChatTemplateResult {
-    /// Parse a generated response into an OpenAI-compatible message JSON string.
-    ///
-    /// # Errors
-    /// Returns an error if the FFI call fails or the result is null.
-    pub fn parse_response_oaicompat(
-        &self,
-        text: &str,
-        is_partial: bool,
-    ) -> Result<String, ChatParseError> {
-        let text_cstr = CString::new(text)?;
-        let parser_cstr = self.parser.as_deref().map(CString::new).transpose()?;
-        let mut out_json: *mut c_char = ptr::null_mut();
-        let rc = unsafe {
-            llama_cpp_bindings_sys::llama_rs_chat_parse_to_oaicompat(
-                text_cstr.as_ptr(),
-                is_partial,
-                self.chat_format,
-                self.parse_tool_calls,
-                parser_cstr
-                    .as_ref()
-                    .map_or(ptr::null(), |cstr| cstr.as_ptr()),
-                self.thinking_forced_open,
-                &raw mut out_json,
-            )
-        };
-
-        let result = (|| {
-            if !status_is_ok(rc) {
-                return Err(ChatParseError::FfiError(status_to_i32(rc)));
-            }
-            if out_json.is_null() {
-                return Err(ChatParseError::NullResult);
-            }
-            let bytes = unsafe { CStr::from_ptr(out_json) }.to_bytes().to_vec();
-            Ok(String::from_utf8(bytes)?)
-        })();
-
-        unsafe { llama_cpp_bindings_sys::llama_rs_string_free(out_json) };
-        result
-    }
-
-    /// Initialize a streaming parser for OpenAI-compatible chat deltas.
-    ///
-    /// # Errors
-    /// Returns an error if the parser state cannot be initialized.
-    pub fn streaming_state_oaicompat(&self) -> Result<ChatParseStateOaicompat, ChatParseError> {
-        let parser_cstr = self.parser.as_deref().map(CString::new).transpose()?;
-        let state = unsafe {
-            llama_cpp_bindings_sys::llama_rs_chat_parse_state_init_oaicompat(
-                self.chat_format,
-                self.parse_tool_calls,
-                parser_cstr
-                    .as_ref()
-                    .map_or(ptr::null(), |cstr| cstr.as_ptr()),
-                self.thinking_forced_open,
-            )
-        };
-        let state = NonNull::new(state).ok_or(ChatParseError::NullResult)?;
-        Ok(ChatParseStateOaicompat { state })
+        unsafe { parse_chat_template_raw_result(rc, &raw mut raw_result, parse_tool_calls) }
     }
 }
 
@@ -1172,41 +827,12 @@ where
 
     // resize, convert, and return
     buffer.truncate(returned_len);
+
     Ok(String::from_utf8(buffer)?)
 }
 
 impl Drop for LlamaModel {
     fn drop(&mut self) {
         unsafe { llama_cpp_bindings_sys::llama_free_model(self.model.as_ptr()) }
-    }
-}
-
-/// a rusty equivalent of `llama_vocab_type`
-#[repr(u32)]
-#[derive(Debug, Eq, Copy, Clone, PartialEq)]
-pub enum VocabType {
-    /// Byte Pair Encoding
-    BPE = llama_cpp_bindings_sys::LLAMA_VOCAB_TYPE_BPE as _,
-    /// Sentence Piece Tokenizer
-    SPM = llama_cpp_bindings_sys::LLAMA_VOCAB_TYPE_SPM as _,
-}
-
-/// There was an error converting a `llama_vocab_type` to a `VocabType`.
-#[derive(thiserror::Error, Debug, Eq, PartialEq)]
-pub enum LlamaTokenTypeFromIntError {
-    /// The value is not a valid `llama_token_type`. Contains the int value that was invalid.
-    #[error("Unknown Value {0}")]
-    UnknownValue(llama_cpp_bindings_sys::llama_vocab_type),
-}
-
-impl TryFrom<llama_cpp_bindings_sys::llama_vocab_type> for VocabType {
-    type Error = LlamaTokenTypeFromIntError;
-
-    fn try_from(value: llama_cpp_bindings_sys::llama_vocab_type) -> Result<Self, Self::Error> {
-        match value {
-            llama_cpp_bindings_sys::LLAMA_VOCAB_TYPE_BPE => Ok(VocabType::BPE),
-            llama_cpp_bindings_sys::LLAMA_VOCAB_TYPE_SPM => Ok(VocabType::SPM),
-            unknown => Err(LlamaTokenTypeFromIntError::UnknownValue(unknown)),
-        }
     }
 }
