@@ -143,6 +143,9 @@ pub enum GrammarError {
     /// The grammar string or root contains null bytes
     #[error("Grammar string or root contains null bytes")]
     GrammarNullBytes,
+    /// A string contains null bytes
+    #[error("String contains null bytes: {0}")]
+    NulError(#[from] std::ffi::NulError),
     /// The grammar call returned null
     #[error("Grammar call returned null")]
     NullGrammar,

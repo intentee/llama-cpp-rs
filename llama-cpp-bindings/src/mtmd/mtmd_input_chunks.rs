@@ -41,7 +41,7 @@ impl MtmdInputChunks {
     #[must_use]
     pub fn new() -> Self {
         let chunks = unsafe { llama_cpp_bindings_sys::mtmd_input_chunks_init() };
-        let chunks = NonNull::new(chunks).unwrap();
+        let chunks = NonNull::new(chunks).expect("llama.cpp mtmd_input_chunks_init returned null");
         Self { chunks }
     }
 

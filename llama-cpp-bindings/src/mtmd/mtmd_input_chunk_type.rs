@@ -1,3 +1,8 @@
+/// Error when converting from an unknown MTMD input chunk type value.
+#[derive(Debug, thiserror::Error)]
+#[error("Unknown MTMD input chunk type: {0}")]
+pub struct MtmdInputChunkTypeError(pub llama_cpp_bindings_sys::mtmd_input_chunk_type);
+
 /// Input chunk types for multimodal data
 ///
 /// # Examples
@@ -10,7 +15,8 @@
 /// let audio_chunk = MtmdInputChunkType::Audio;
 ///
 /// assert_eq!(text_chunk, MtmdInputChunkType::Text);
-/// assert_eq!(text_chunk, llama_cpp_bindings_sys::MTMD_INPUT_CHUNK_TYPE_TEXT.into());
+/// let converted: MtmdInputChunkType = llama_cpp_bindings_sys::MTMD_INPUT_CHUNK_TYPE_TEXT.try_into().unwrap();
+/// assert_eq!(text_chunk, converted);
 /// assert_ne!(text_chunk, image_chunk);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,13 +30,17 @@ pub enum MtmdInputChunkType {
     Audio = llama_cpp_bindings_sys::MTMD_INPUT_CHUNK_TYPE_AUDIO as _,
 }
 
-impl From<llama_cpp_bindings_sys::mtmd_input_chunk_type> for MtmdInputChunkType {
-    fn from(chunk_type: llama_cpp_bindings_sys::mtmd_input_chunk_type) -> Self {
+impl TryFrom<llama_cpp_bindings_sys::mtmd_input_chunk_type> for MtmdInputChunkType {
+    type Error = MtmdInputChunkTypeError;
+
+    fn try_from(
+        chunk_type: llama_cpp_bindings_sys::mtmd_input_chunk_type,
+    ) -> Result<Self, Self::Error> {
         match chunk_type {
-            llama_cpp_bindings_sys::MTMD_INPUT_CHUNK_TYPE_TEXT => MtmdInputChunkType::Text,
-            llama_cpp_bindings_sys::MTMD_INPUT_CHUNK_TYPE_IMAGE => MtmdInputChunkType::Image,
-            llama_cpp_bindings_sys::MTMD_INPUT_CHUNK_TYPE_AUDIO => MtmdInputChunkType::Audio,
-            _ => panic!("Unknown MTMD input chunk type: {chunk_type}"),
+            llama_cpp_bindings_sys::MTMD_INPUT_CHUNK_TYPE_TEXT => Ok(MtmdInputChunkType::Text),
+            llama_cpp_bindings_sys::MTMD_INPUT_CHUNK_TYPE_IMAGE => Ok(MtmdInputChunkType::Image),
+            llama_cpp_bindings_sys::MTMD_INPUT_CHUNK_TYPE_AUDIO => Ok(MtmdInputChunkType::Audio),
+            unknown => Err(MtmdInputChunkTypeError(unknown)),
         }
     }
 }

@@ -426,9 +426,10 @@ impl LlamaSampler {
             return Err(GrammarError::GrammarNullBytes);
         }
 
+        // SAFETY: null byte check precedes this conversion, CString::new cannot fail
         Ok((
-            CString::new(grammar_str).unwrap(),
-            CString::new(grammar_root).unwrap(),
+            CString::new(grammar_str).expect("grammar_str contains no null bytes"),
+            CString::new(grammar_root).expect("grammar_root contains no null bytes"),
         ))
     }
 
@@ -442,9 +443,10 @@ impl LlamaSampler {
         {
             return Err(GrammarError::TriggerWordNullBytes);
         }
+        // SAFETY: null byte check precedes this conversion, CString::new cannot fail
         Ok(trigger_words
             .into_iter()
-            .map(|word| CString::new(word.as_ref()).unwrap())
+            .map(|word| CString::new(word.as_ref()).expect("trigger word contains no null bytes"))
             .collect())
     }
 
@@ -456,7 +458,8 @@ impl LlamaSampler {
             if pattern.contains('\0') {
                 return Err(GrammarError::GrammarNullBytes);
             }
-            patterns.push(CString::new(pattern.as_str()).unwrap());
+            // SAFETY: null byte check precedes this conversion, CString::new cannot fail
+            patterns.push(CString::new(pattern.as_str()).expect("pattern contains no null bytes"));
         }
         Ok(patterns)
     }
@@ -465,10 +468,9 @@ impl LlamaSampler {
     /// <https://github.com/oobabooga/text-generation-webui/pull/5677>, porting Koboldcpp
     /// implementation authored by pi6am: <https://github.com/LostRuins/koboldcpp/pull/982>
     ///
-    /// # Panics
-    /// If any string in ``seq_breakers`` contains null bytes.
+    /// # Errors
+    /// Returns an error if any string in `seq_breakers` contains null bytes.
     #[allow(missing_docs)]
-    #[must_use]
     pub fn dry(
         model: &LlamaModel,
         multiplier: f32,
@@ -476,11 +478,11 @@ impl LlamaSampler {
         allowed_length: i32,
         penalty_last_n: i32,
         seq_breakers: impl IntoIterator<Item = impl AsRef<[u8]>>,
-    ) -> Self {
+    ) -> Result<Self, GrammarError> {
         let seq_breakers: Vec<CString> = seq_breakers
             .into_iter()
-            .map(|s| CString::new(s.as_ref()).expect("A sequence breaker contains null bytes"))
-            .collect();
+            .map(|s| CString::new(s.as_ref()))
+            .collect::<Result<Vec<_>, _>>()?;
         let mut seq_breaker_pointers: Vec<*const c_char> =
             seq_breakers.iter().map(|s| s.as_ptr()).collect();
 
@@ -499,7 +501,8 @@ impl LlamaSampler {
                 seq_breaker_pointers.len(),
             )
         };
-        Self { sampler }
+
+        Ok(Self { sampler })
     }
 
     /// Penalizes tokens for being present in the context.

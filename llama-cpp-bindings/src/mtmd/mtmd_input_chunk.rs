@@ -5,7 +5,7 @@ use std::slice;
 use crate::token::LlamaToken;
 
 use super::mtmd_error::MtmdInputChunkError;
-use super::mtmd_input_chunk_type::MtmdInputChunkType;
+use super::mtmd_input_chunk_type::{MtmdInputChunkType, MtmdInputChunkTypeError};
 
 /// Safe wrapper around `mtmd_input_chunk`.
 ///
@@ -21,11 +21,13 @@ pub struct MtmdInputChunk {
 
 impl MtmdInputChunk {
     /// Get the type of this chunk
-    #[must_use]
-    pub fn chunk_type(&self) -> MtmdInputChunkType {
+    ///
+    /// # Errors
+    /// Returns an error if the chunk type is unknown.
+    pub fn chunk_type(&self) -> Result<MtmdInputChunkType, MtmdInputChunkTypeError> {
         let chunk_type =
             unsafe { llama_cpp_bindings_sys::mtmd_input_chunk_get_type(self.chunk.as_ptr()) };
-        MtmdInputChunkType::from(chunk_type)
+        MtmdInputChunkType::try_from(chunk_type)
     }
 
     /// Get text tokens from this chunk.
@@ -33,7 +35,7 @@ impl MtmdInputChunk {
     /// Only valid for text chunks. Returns `None` for image or audio chunks.
     #[must_use]
     pub fn text_tokens(&self) -> Option<&[LlamaToken]> {
-        if self.chunk_type() != MtmdInputChunkType::Text {
+        if self.chunk_type() != Ok(MtmdInputChunkType::Text) {
             return None;
         }
 

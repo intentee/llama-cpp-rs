@@ -26,8 +26,12 @@ macro_rules! log_cs {
         static $fields: std::sync::LazyLock<OverridableFields> = std::sync::LazyLock::new(|| {
             let fields = $meta.fields();
             OverridableFields {
-                message: fields.field("message").unwrap(),
-                target: fields.field("module").unwrap(),
+                message: fields
+                    .field("message")
+                    .expect("message field defined in FIELD_NAMES"),
+                target: fields
+                    .field("module")
+                    .expect("module field defined in FIELD_NAMES"),
             }
         });
 

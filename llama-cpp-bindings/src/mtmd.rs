@@ -25,6 +25,6 @@ pub use mtmd_error::{
     MtmdInputChunksError, MtmdTokenizeError,
 };
 pub use mtmd_input_chunk::MtmdInputChunk;
-pub use mtmd_input_chunk_type::MtmdInputChunkType;
+pub use mtmd_input_chunk_type::{MtmdInputChunkType, MtmdInputChunkTypeError};
 pub use mtmd_input_chunks::MtmdInputChunks;
 pub use mtmd_input_text::MtmdInputText;
