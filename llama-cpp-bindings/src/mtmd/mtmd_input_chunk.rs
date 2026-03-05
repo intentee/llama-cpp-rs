@@ -1,0 +1,107 @@
+use std::ffi::CStr;
+use std::ptr::NonNull;
+use std::slice;
+
+use crate::token::LlamaToken;
+
+use super::mtmd_error::MtmdInputChunkError;
+use super::mtmd_input_chunk_type::MtmdInputChunkType;
+
+/// Safe wrapper around `mtmd_input_chunk`.
+///
+/// Represents a single chunk of input data, which can be either text tokens,
+/// image tokens, or audio tokens. The chunk type determines what kind of
+/// data and operations are available.
+#[derive(Debug)]
+pub struct MtmdInputChunk {
+    /// Raw pointer to the underlying `mtmd_input_chunk`.
+    pub chunk: NonNull<llama_cpp_bindings_sys::mtmd_input_chunk>,
+    pub(super) owned: bool,
+}
+
+impl MtmdInputChunk {
+    /// Get the type of this chunk
+    #[must_use]
+    pub fn chunk_type(&self) -> MtmdInputChunkType {
+        let chunk_type =
+            unsafe { llama_cpp_bindings_sys::mtmd_input_chunk_get_type(self.chunk.as_ptr()) };
+        MtmdInputChunkType::from(chunk_type)
+    }
+
+    /// Get text tokens from this chunk.
+    ///
+    /// Only valid for text chunks. Returns `None` for image or audio chunks.
+    #[must_use]
+    pub fn text_tokens(&self) -> Option<&[LlamaToken]> {
+        if self.chunk_type() != MtmdInputChunkType::Text {
+            return None;
+        }
+
+        let mut n_tokens = 0usize;
+        let tokens_ptr = unsafe {
+            llama_cpp_bindings_sys::mtmd_input_chunk_get_tokens_text(
+                self.chunk.as_ptr(),
+                &raw mut n_tokens,
+            )
+        };
+
+        if tokens_ptr.is_null() || n_tokens == 0 {
+            None
+        } else {
+            unsafe {
+                Some(slice::from_raw_parts(
+                    tokens_ptr.cast::<LlamaToken>(),
+                    n_tokens,
+                ))
+            }
+        }
+    }
+
+    /// Get the number of tokens in this chunk
+    #[must_use]
+    pub fn n_tokens(&self) -> usize {
+        unsafe { llama_cpp_bindings_sys::mtmd_input_chunk_get_n_tokens(self.chunk.as_ptr()) }
+    }
+
+    /// Get the number of positions in this chunk.
+    #[must_use]
+    pub fn n_positions(&self) -> i32 {
+        unsafe { llama_cpp_bindings_sys::mtmd_input_chunk_get_n_pos(self.chunk.as_ptr()) }
+    }
+
+    /// Get chunk ID if available.
+    ///
+    /// Returns `None` for text chunks, may return an ID for image/audio chunks.
+    #[must_use]
+    pub fn id(&self) -> Option<String> {
+        let ptr = unsafe { llama_cpp_bindings_sys::mtmd_input_chunk_get_id(self.chunk.as_ptr()) };
+        if ptr.is_null() {
+            None
+        } else {
+            unsafe { CStr::from_ptr(ptr) }
+                .to_string_lossy()
+                .into_owned()
+                .into()
+        }
+    }
+
+    /// Create a copy of this chunk that you own.
+    ///
+    /// # Errors
+    ///
+    /// Returns `MtmdInputChunkError::NullResult` if copying fails.
+    pub fn copy(&self) -> Result<Self, MtmdInputChunkError> {
+        let chunk = unsafe { llama_cpp_bindings_sys::mtmd_input_chunk_copy(self.chunk.as_ptr()) };
+        let chunk = NonNull::new(chunk).ok_or(MtmdInputChunkError::NullResult)?;
+
+        Ok(Self { chunk, owned: true })
+    }
+}
+
+impl Drop for MtmdInputChunk {
+    fn drop(&mut self) {
+        if self.owned {
+            unsafe { llama_cpp_bindings_sys::mtmd_input_chunk_free(self.chunk.as_ptr()) }
+        }
+    }
+}
