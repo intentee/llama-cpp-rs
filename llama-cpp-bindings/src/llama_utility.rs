@@ -119,3 +119,29 @@ pub fn json_schema_to_grammar(schema_json: &str) -> Result<String> {
 pub fn ggml_time_us() -> i64 {
     unsafe { llama_cpp_bindings_sys::ggml_time_us() }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{status_is_ok, status_to_i32};
+
+    #[test]
+    fn status_is_ok_for_ok_status() {
+        assert!(status_is_ok(llama_cpp_bindings_sys::LLAMA_RS_STATUS_OK));
+    }
+
+    #[test]
+    fn status_is_ok_for_error_status() {
+        assert!(!status_is_ok(1));
+        assert!(!status_is_ok(-1));
+    }
+
+    #[test]
+    fn status_to_i32_preserves_value() {
+        assert_eq!(
+            status_to_i32(llama_cpp_bindings_sys::LLAMA_RS_STATUS_OK),
+            llama_cpp_bindings_sys::LLAMA_RS_STATUS_OK
+        );
+        assert_eq!(status_to_i32(42), 42);
+        assert_eq!(status_to_i32(-1), -1);
+    }
+}

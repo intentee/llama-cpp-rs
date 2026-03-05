@@ -221,3 +221,149 @@ impl Drop for LlamaBatch<'_> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::token::LlamaToken;
+
+    use super::{BatchAddError, LlamaBatch};
+
+    #[test]
+    fn new_creates_empty_batch() {
+        let batch = LlamaBatch::new(16, 1);
+
+        assert_eq!(batch.n_tokens(), 0);
+        assert!(batch.initialized_logits.is_empty());
+    }
+
+    #[test]
+    fn clear_resets_batch() {
+        let mut batch = LlamaBatch::new(16, 1);
+        batch
+            .add(LlamaToken::new(1), 0, &[0], true)
+            .expect("add should succeed");
+        assert_eq!(batch.n_tokens(), 1);
+
+        batch.clear();
+
+        assert_eq!(batch.n_tokens(), 0);
+        assert!(batch.initialized_logits.is_empty());
+    }
+
+    #[test]
+    fn add_increments_token_count() {
+        let mut batch = LlamaBatch::new(16, 1);
+
+        batch
+            .add(LlamaToken::new(1), 0, &[0], false)
+            .expect("add should succeed");
+        assert_eq!(batch.n_tokens(), 1);
+
+        batch
+            .add(LlamaToken::new(2), 1, &[0], false)
+            .expect("add should succeed");
+        assert_eq!(batch.n_tokens(), 2);
+    }
+
+    #[test]
+    fn add_tracks_logits() {
+        let mut batch = LlamaBatch::new(16, 1);
+
+        batch
+            .add(LlamaToken::new(1), 0, &[0], false)
+            .expect("add should succeed");
+        assert!(batch.initialized_logits.is_empty());
+
+        batch
+            .add(LlamaToken::new(2), 1, &[0], true)
+            .expect("add should succeed");
+        assert_eq!(batch.initialized_logits, vec![1]);
+    }
+
+    #[test]
+    fn add_returns_insufficient_space_when_full() {
+        let mut batch = LlamaBatch::new(1, 1);
+        batch
+            .add(LlamaToken::new(1), 0, &[0], false)
+            .expect("first add should succeed");
+
+        let result = batch.add(LlamaToken::new(2), 1, &[0], false);
+
+        assert_eq!(result, Err(BatchAddError::InsufficientSpace(1)));
+    }
+
+    #[test]
+    fn add_sequence_adds_all_tokens() {
+        let mut batch = LlamaBatch::new(16, 1);
+        let tokens = vec![
+            LlamaToken::new(10),
+            LlamaToken::new(20),
+            LlamaToken::new(30),
+        ];
+
+        batch
+            .add_sequence(&tokens, 0, false)
+            .expect("add_sequence should succeed");
+
+        assert_eq!(batch.n_tokens(), 3);
+    }
+
+    #[test]
+    fn add_sequence_sets_logits_on_last_token() {
+        let mut batch = LlamaBatch::new(16, 1);
+        let tokens = vec![
+            LlamaToken::new(10),
+            LlamaToken::new(20),
+            LlamaToken::new(30),
+        ];
+
+        batch
+            .add_sequence(&tokens, 0, false)
+            .expect("add_sequence should succeed");
+
+        assert_eq!(batch.initialized_logits, vec![2]);
+    }
+
+    #[test]
+    fn add_sequence_insufficient_space() {
+        let mut batch = LlamaBatch::new(2, 1);
+        let tokens = vec![
+            LlamaToken::new(10),
+            LlamaToken::new(20),
+            LlamaToken::new(30),
+        ];
+
+        let result = batch.add_sequence(&tokens, 0, false);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn get_one_with_valid_tokens() {
+        let tokens = vec![LlamaToken::new(1), LlamaToken::new(2)];
+        let batch = LlamaBatch::get_one(&tokens).expect("get_one should succeed");
+
+        assert_eq!(batch.n_tokens(), 2);
+        assert_eq!(batch.initialized_logits, vec![1]);
+    }
+
+    #[test]
+    fn get_one_empty_slice_returns_error() {
+        let tokens: Vec<LlamaToken> = vec![];
+        let result = LlamaBatch::get_one(&tokens);
+
+        assert!(
+            matches!(result, Err(BatchAddError::EmptyBuffer)),
+            "expected EmptyBuffer error"
+        );
+    }
+
+    #[test]
+    fn get_one_single_token() {
+        let tokens = vec![LlamaToken::new(42)];
+        let batch = LlamaBatch::get_one(&tokens).expect("get_one should succeed");
+
+        assert_eq!(batch.n_tokens(), 1);
+        assert_eq!(batch.initialized_logits, vec![0]);
+    }
+}

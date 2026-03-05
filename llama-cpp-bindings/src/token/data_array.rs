@@ -237,4 +237,53 @@ mod tests {
 
         assert_eq!(array.selected_token(), None);
     }
+
+    #[test]
+    fn apply_greedy_sampler_selects_highest_logit() {
+        use crate::sampling::LlamaSampler;
+
+        let mut array = LlamaTokenDataArray::new(
+            vec![
+                LlamaTokenData::new(LlamaToken::new(0), 1.0, 0.0),
+                LlamaTokenData::new(LlamaToken::new(1), 5.0, 0.0),
+                LlamaTokenData::new(LlamaToken::new(2), 3.0, 0.0),
+            ],
+            false,
+        );
+
+        array.apply_sampler(&LlamaSampler::greedy());
+
+        assert_eq!(array.selected_token(), Some(LlamaToken::new(1)));
+    }
+
+    #[test]
+    fn with_sampler_builder_pattern() {
+        use crate::sampling::LlamaSampler;
+
+        let array = LlamaTokenDataArray::new(
+            vec![
+                LlamaTokenData::new(LlamaToken::new(0), 1.0, 0.0),
+                LlamaTokenData::new(LlamaToken::new(1), 5.0, 0.0),
+            ],
+            false,
+        )
+        .with_sampler(&mut LlamaSampler::greedy());
+
+        assert_eq!(array.selected_token(), Some(LlamaToken::new(1)));
+    }
+
+    #[test]
+    fn sample_token_greedy_returns_highest() {
+        let mut array = LlamaTokenDataArray::new(
+            vec![
+                LlamaTokenData::new(LlamaToken::new(10), 0.1, 0.0),
+                LlamaTokenData::new(LlamaToken::new(20), 9.9, 0.0),
+            ],
+            false,
+        );
+
+        let token = array.sample_token_greedy();
+
+        assert_eq!(token, LlamaToken::new(20));
+    }
 }
