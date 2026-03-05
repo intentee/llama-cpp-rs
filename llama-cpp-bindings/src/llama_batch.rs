@@ -7,6 +7,9 @@ use llama_cpp_bindings_sys::{
 use std::marker::PhantomData;
 
 /// A safe wrapper around `llama_batch`.
+///
+/// `PartialEq` is intentionally not implemented because the underlying `llama_batch`
+/// from the C API contains raw pointers whose address comparison would be meaningless.
 #[derive(Debug)]
 pub struct LlamaBatch<'tokens> {
     /// The number of tokens the batch was allocated with. they are safe to write to - but not necessarily read from as they are not necessarily initialized
