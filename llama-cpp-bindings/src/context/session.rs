@@ -321,12 +321,14 @@ impl LlamaContext<'_> {
         unsafe { llama_cpp_bindings_sys::llama_copy_state_data(self.context.as_ptr(), dest) }
     }
 
-    /// Set the state reading from the specified address
-    /// Returns the number of bytes read
+    /// Set the state reading from the specified address.
+    /// Returns the number of bytes read.
     ///
     /// # Safety
     ///
-    /// help wanted: not entirely sure what the safety requirements are here.
+    /// The `src` buffer must contain data previously obtained from [`copy_state_data`](Self::copy_state_data)
+    /// on a compatible context (same model and parameters). Passing arbitrary or corrupted bytes
+    /// will lead to undefined behavior.
     pub unsafe fn set_state_data(&mut self, src: &[u8]) -> usize {
         unsafe { llama_cpp_bindings_sys::llama_set_state_data(self.context.as_ptr(), src.as_ptr()) }
     }

@@ -59,7 +59,7 @@ impl LlamaBackend {
     ///
     ///# fn main() -> Result<(), Box<dyn Error>> {
     ///
-    /// let llama_backend = LlamaBackend::init_numa(NumaStrategy::MIRROR)?;
+    /// let llama_backend = LlamaBackend::init_numa(NumaStrategy::Mirror)?;
     ///
     ///# Ok(())
     ///# }

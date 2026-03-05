@@ -109,7 +109,7 @@ impl Default for LlamaSplitMode {
 
 #[cfg(test)]
 mod tests {
-    use super::{LlamaSplitMode, LlamaSplitModeParseError};
+    use super::LlamaSplitMode;
 
     #[test]
     fn try_from_i32_invalid() {
