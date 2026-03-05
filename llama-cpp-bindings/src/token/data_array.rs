@@ -1,7 +1,9 @@
 //! an rusty equivalent of `llama_token_data_array`.
 use std::ptr;
 
-use crate::{sampling::LlamaSampler, token::data::LlamaTokenData};
+use crate::error::TokenSamplingError;
+use crate::sampling::LlamaSampler;
+use crate::token::data::LlamaTokenData;
 
 use super::LlamaToken;
 
@@ -144,22 +146,22 @@ impl LlamaTokenDataArray {
 
     /// Randomly selects a token from the candidates based on their probabilities.
     ///
-    /// # Panics
-    /// If the internal llama.cpp sampler fails to select a token.
-    pub fn sample_token(&mut self, seed: u32) -> LlamaToken {
+    /// # Errors
+    /// Returns [`TokenSamplingError::NoTokenSelected`] if the sampler fails to select a token.
+    pub fn sample_token(&mut self, seed: u32) -> Result<LlamaToken, TokenSamplingError> {
         self.apply_sampler(&LlamaSampler::dist(seed));
         self.selected_token()
-            .expect("Dist sampler failed to select a token!")
+            .ok_or(TokenSamplingError::NoTokenSelected)
     }
 
     /// Selects the token with the highest probability.
     ///
-    /// # Panics
-    /// If the internal llama.cpp sampler fails to select a token.
-    pub fn sample_token_greedy(&mut self) -> LlamaToken {
+    /// # Errors
+    /// Returns [`TokenSamplingError::NoTokenSelected`] if the sampler fails to select a token.
+    pub fn sample_token_greedy(&mut self) -> Result<LlamaToken, TokenSamplingError> {
         self.apply_sampler(&LlamaSampler::greedy());
         self.selected_token()
-            .expect("Greedy sampler failed to select a token!")
+            .ok_or(TokenSamplingError::NoTokenSelected)
     }
 }
 
@@ -282,7 +284,9 @@ mod tests {
             false,
         );
 
-        let token = array.sample_token_greedy();
+        let token = array
+            .sample_token_greedy()
+            .expect("test: greedy sampler should select a token");
 
         assert_eq!(token, LlamaToken::new(20));
     }
