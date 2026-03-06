@@ -120,7 +120,7 @@ impl State {
         }
     }
 
-    fn generate_log(target: Module, level: llama_cpp_bindings_sys::ggml_log_level, text: &str) {
+    fn generate_log(&self, level: llama_cpp_bindings_sys::ggml_log_level, text: &str) {
         // Tracing requires the target name to be a string literal (not even &'static str), so
         // the match arms below are duplicated per module. The interior submodule name from
         // llama.cpp/ggml cannot be propagated as a target because it is baked into a static
@@ -135,14 +135,23 @@ impl State {
                 if next_two == Some(": ") {
                     let (sub_module, text) = text.split_at(pos + 1);
                     let text = text.split_at(2).1;
-                    Some((Some(format!("{}::{sub_module}", target.name())), text))
+                    Some((Some(format!("{}::{sub_module}", self.module.name())), text))
                 } else {
                     None
                 }
             })
             .unwrap_or((None, text));
 
-        let (meta, fields) = meta_for_level(level);
+        let effective_level = if self.options.demote_info_to_debug
+            && (level == llama_cpp_bindings_sys::GGML_LOG_LEVEL_INFO
+                || level == llama_cpp_bindings_sys::GGML_LOG_LEVEL_DEBUG)
+        {
+            llama_cpp_bindings_sys::GGML_LOG_LEVEL_DEBUG
+        } else {
+            level
+        };
+
+        let (meta, fields) = meta_for_level(effective_level);
 
         tracing::dispatcher::get_default(|dispatcher| {
             dispatcher.event(&tracing::Event::new(
@@ -169,7 +178,7 @@ impl State {
             if buffer.ends_with('\n') {
                 self.is_buffering
                     .store(false, std::sync::atomic::Ordering::Release);
-                Self::generate_log(self.module, previous_log_level, buffer.as_str());
+                self.generate_log(previous_log_level, buffer.as_str());
             } else {
                 *lock = Some((previous_log_level, buffer));
             }
@@ -205,7 +214,7 @@ impl State {
                 origin = "crate",
                 "Message buffered unnecessarily due to missing newline and not followed by a CONT"
             );
-            Self::generate_log(self.module, previous_log_level, buffer.as_str());
+            self.generate_log(previous_log_level, buffer.as_str());
         }
 
         self.is_buffering
@@ -231,7 +240,7 @@ impl State {
                 origin = "crate",
                 "llama.cpp message buffered spuriously due to missing \\n and being followed by a non-CONT message!"
             );
-            Self::generate_log(self.module, buf_level, buf_text.as_str());
+            self.generate_log(buf_level, buf_text.as_str());
         }
 
         self.previous_level
@@ -242,13 +251,17 @@ impl State {
 
         match level {
             llama_cpp_bindings_sys::GGML_LOG_LEVEL_NONE => {
-                tracing::info!(no_log_level = true, text);
+                if self.options.demote_info_to_debug {
+                    self.generate_log(llama_cpp_bindings_sys::GGML_LOG_LEVEL_DEBUG, text);
+                } else {
+                    tracing::info!(no_log_level = true, text);
+                }
             }
             llama_cpp_bindings_sys::GGML_LOG_LEVEL_DEBUG
             | llama_cpp_bindings_sys::GGML_LOG_LEVEL_INFO
             | llama_cpp_bindings_sys::GGML_LOG_LEVEL_WARN
             | llama_cpp_bindings_sys::GGML_LOG_LEVEL_ERROR => {
-                Self::generate_log(self.module, level, text)
+                self.generate_log(level, text)
             }
             llama_cpp_bindings_sys::GGML_LOG_LEVEL_CONT => unreachable!(),
             _ => {
@@ -282,7 +295,18 @@ impl State {
         } else {
             level
         };
-        let (meta, _) = meta_for_level(level);
+
+        let effective_level = if self.options.demote_info_to_debug
+            && (level == llama_cpp_bindings_sys::GGML_LOG_LEVEL_INFO
+                || level == llama_cpp_bindings_sys::GGML_LOG_LEVEL_DEBUG)
+        {
+            llama_cpp_bindings_sys::GGML_LOG_LEVEL_DEBUG
+        } else {
+            level
+        };
+
+        let (meta, _) = meta_for_level(effective_level);
+
         tracing::dispatcher::get_default(|dispatcher| dispatcher.enabled(meta))
     }
 }
@@ -682,5 +706,78 @@ mod tests {
 
         assert_eq!(logs.len(), 1);
         assert!(logs[0].contains("part1 part2 part3"));
+    }
+
+    #[test]
+    fn demote_info_to_debug_suppresses_info_under_info_subscriber() {
+        let logger = create_logger(tracing::Level::INFO);
+        let options = LogOptions::default().with_demote_info_to_debug(true);
+        let mut log_state = Box::new(State::new(Module::LlamaCpp, options));
+        let log_ptr = log_state.as_mut() as *mut State as *mut std::os::raw::c_void;
+
+        logs_to_trace(
+            llama_cpp_bindings_sys::GGML_LOG_LEVEL_INFO,
+            c"should be suppressed\n".as_ptr(),
+            log_ptr,
+        );
+
+        assert!(logger.logs.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn demote_info_to_debug_emits_info_under_debug_subscriber() {
+        let logger = create_logger(tracing::Level::DEBUG);
+        let options = LogOptions::default().with_demote_info_to_debug(true);
+        let mut log_state = Box::new(State::new(Module::LlamaCpp, options));
+        let log_ptr = log_state.as_mut() as *mut State as *mut std::os::raw::c_void;
+
+        logs_to_trace(
+            llama_cpp_bindings_sys::GGML_LOG_LEVEL_INFO,
+            c"visible at debug\n".as_ptr(),
+            log_ptr,
+        );
+
+        let logs = logger.logs.lock().unwrap();
+
+        assert_eq!(logs.len(), 1);
+        assert!(logs[0].contains("visible at debug"));
+    }
+
+    #[test]
+    fn demote_info_to_debug_preserves_error_under_info_subscriber() {
+        let logger = create_logger(tracing::Level::INFO);
+        let options = LogOptions::default().with_demote_info_to_debug(true);
+        let mut log_state = Box::new(State::new(Module::LlamaCpp, options));
+        let log_ptr = log_state.as_mut() as *mut State as *mut std::os::raw::c_void;
+
+        logs_to_trace(
+            llama_cpp_bindings_sys::GGML_LOG_LEVEL_ERROR,
+            c"error still visible\n".as_ptr(),
+            log_ptr,
+        );
+
+        let logs = logger.logs.lock().unwrap();
+
+        assert_eq!(logs.len(), 1);
+        assert!(logs[0].contains("error still visible"));
+    }
+
+    #[test]
+    fn demote_info_to_debug_preserves_warn_under_info_subscriber() {
+        let logger = create_logger(tracing::Level::INFO);
+        let options = LogOptions::default().with_demote_info_to_debug(true);
+        let mut log_state = Box::new(State::new(Module::LlamaCpp, options));
+        let log_ptr = log_state.as_mut() as *mut State as *mut std::os::raw::c_void;
+
+        logs_to_trace(
+            llama_cpp_bindings_sys::GGML_LOG_LEVEL_WARN,
+            c"warning still visible\n".as_ptr(),
+            log_ptr,
+        );
+
+        let logs = logger.logs.lock().unwrap();
+
+        assert_eq!(logs.len(), 1);
+        assert!(logs[0].contains("warning still visible"));
     }
 }
