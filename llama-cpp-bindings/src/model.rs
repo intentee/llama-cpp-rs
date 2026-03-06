@@ -181,10 +181,8 @@ impl LlamaModel {
             )
         };
 
-        // if we fail the first time we can resize the vector to the correct size and try again. This should never fail.
-        // as a result - size is guaranteed to be positive here.
         let size = if size.is_negative() {
-            buffer.reserve_exact(usize::try_from(-size).expect("usize's are larger "));
+            buffer.reserve_exact(usize::try_from(-size).expect("negated size fits into usize"));
             unsafe {
                 llama_cpp_bindings_sys::llama_tokenize(
                     self.vocab_ptr(),
@@ -202,9 +200,9 @@ impl LlamaModel {
             size
         };
 
-        let size = usize::try_from(size).expect("size is positive and usize ");
+        let size = usize::try_from(size).expect("size is positive and fits into usize");
 
-        // Safety: `size` < `capacity` and llama-cpp has initialized elements up to `size`
+        // SAFETY: `size` < `capacity` and llama-cpp has initialized elements up to `size`
         unsafe { buffer.set_len(size) }
 
         Ok(buffer)
@@ -247,21 +245,20 @@ impl LlamaModel {
         lstrip: Option<NonZeroU16>,
     ) -> Result<String, TokenToStringError> {
         let bytes = match self.token_to_piece_bytes(token, 8, special, lstrip) {
-            // when there is insufficient space `token_to_piece` will return a negative number with the size that would have been returned
-            // https://github.com/abetlen/llama-cpp-python/blob/c37132bac860fcc333255c36313f89c4f49d4c8d/llama_cpp/llama_cpp.py#L3461
-            Err(TokenToStringError::InsufficientBufferSpace(i)) => self.token_to_piece_bytes(
-                token,
-                (-i).try_into().expect("Error buffer size is positive"),
-                special,
-                lstrip,
-            ),
-            x => x,
+            Err(TokenToStringError::InsufficientBufferSpace(required_size)) => self
+                .token_to_piece_bytes(
+                    token,
+                    (-required_size)
+                        .try_into()
+                        .expect("Error buffer size is positive"),
+                    special,
+                    lstrip,
+                ),
+            other => other,
         }?;
-        // here the assumption is that each byte from the output may map to at most one output charakter
+
         let mut output_piece = String::with_capacity(bytes.len());
-        // _result only tells if there is nothing more in the input, or if the output was full
-        // but further decoding will happen on the next interation anyway
-        let (_result, _somesize, _truthy) =
+        let (_result, _decoded_size, _had_replacements) =
             decoder.decode_to_string(&bytes, &mut output_piece, false);
 
         Ok(output_piece)
@@ -271,7 +268,7 @@ impl LlamaModel {
     ///
     /// Convert a token to bytes using the underlying llama.cpp `llama_token_to_piece` function. This is mostly
     /// a thin wrapper around `llama_token_to_piece` function, that handles rust <-> c type conversions while
-    /// letting the caller handle errors. For a safer inteface returing rust strings directly use `token_to_piece` instead!
+    /// letting the caller handle errors. For a safer interface returning rust strings directly use `token_to_piece` instead!
     ///
     /// # Errors
     ///
@@ -294,7 +291,7 @@ impl LlamaModel {
         let len = string.as_bytes().len();
         let len = c_int::try_from(len).expect("length fits into c_int");
         let buf = string.into_raw();
-        let lstrip = lstrip.map_or(0, |it| i32::from(it.get()));
+        let lstrip = lstrip.map_or(0, |strip_count| i32::from(strip_count.get()));
         let size = unsafe {
             llama_cpp_bindings_sys::llama_token_to_piece(
                 self.vocab_ptr(),
@@ -308,7 +305,9 @@ impl LlamaModel {
 
         match size {
             0 => Err(TokenToStringError::UnknownTokenType),
-            i if i.is_negative() => Err(TokenToStringError::InsufficientBufferSpace(i)),
+            error_code if error_code.is_negative() => {
+                Err(TokenToStringError::InsufficientBufferSpace(error_code))
+            }
             size => {
                 let string = unsafe { CString::from_raw(buf) };
                 let mut bytes = string.into_bytes();
@@ -502,7 +501,6 @@ impl LlamaModel {
             llama_cpp_bindings_sys::llama_model_chat_template(self.model.as_ptr(), name_ptr)
         };
 
-        // Convert result to Rust String if not null
         if result.is_null() {
             Err(ChatTemplateError::MissingTemplate)
         } else {
@@ -632,18 +630,16 @@ impl LlamaModel {
         chat: &[LlamaChatMessage],
         add_ass: bool,
     ) -> Result<String, ApplyChatTemplateError> {
-        // Buffer is twice the length of messages per their recommendation
-        let message_length = chat.iter().fold(0, |acc, c| {
-            acc + c.role.to_bytes().len() + c.content.to_bytes().len()
+        let message_length = chat.iter().fold(0, |acc, chat_message| {
+            acc + chat_message.role.to_bytes().len() + chat_message.content.to_bytes().len()
         });
         let mut buff: Vec<u8> = vec![0; message_length * 2];
 
-        // Build our llama_cpp_bindings_sys chat messages
         let chat: Vec<llama_cpp_bindings_sys::llama_chat_message> = chat
             .iter()
-            .map(|c| llama_cpp_bindings_sys::llama_chat_message {
-                role: c.role.as_ptr(),
-                content: c.content.as_ptr(),
+            .map(|chat_message| llama_cpp_bindings_sys::llama_chat_message {
+                role: chat_message.role.as_ptr(),
+                content: chat_message.content.as_ptr(),
             })
             .collect();
 
@@ -697,9 +693,9 @@ impl LlamaModel {
     ) -> Result<ChatTemplateResult, ApplyChatTemplateError> {
         let chat: Vec<llama_cpp_bindings_sys::llama_chat_message> = messages
             .iter()
-            .map(|c| llama_cpp_bindings_sys::llama_chat_message {
-                role: c.role.as_ptr(),
-                content: c.content.as_ptr(),
+            .map(|chat_message| llama_cpp_bindings_sys::llama_chat_message {
+                role: chat_message.role.as_ptr(),
+                content: chat_message.content.as_ptr(),
             })
             .collect();
 
@@ -792,11 +788,6 @@ impl LlamaModel {
     }
 }
 
-/// Generic helper function for extracting string values from the C API
-/// These are specifically useful for the metadata functions, where we pass in a buffer
-/// to be populated by a string, not yet knowing if the buffer is large enough.
-/// If the buffer was not large enough, we get the correct length back, which can be used to
-/// construct a buffer of appropriate size.
 fn extract_meta_string<TCFunction>(
     c_function: TCFunction,
     capacity: usize,
@@ -805,28 +796,24 @@ where
     TCFunction: Fn(*mut c_char, usize) -> i32,
 {
     let mut buffer = vec![0u8; capacity];
-
-    // call the foreign function
     let result = c_function(buffer.as_mut_ptr().cast::<c_char>(), buffer.len());
+
     if result < 0 {
         return Err(MetaValError::NegativeReturn(result));
     }
 
-    // check if the response fit in our buffer
-    let returned_len = result as usize;
+    let returned_len = result.cast_unsigned() as usize;
+
     if returned_len >= capacity {
-        // buffer wasn't large enough, try again with the correct capacity.
         return extract_meta_string(c_function, returned_len + 1);
     }
 
-    // verify null termination
     debug_assert_eq!(
         buffer.get(returned_len),
         Some(&0),
         "should end with null byte"
     );
 
-    // resize, convert, and return
     buffer.truncate(returned_len);
 
     Ok(String::from_utf8(buffer)?)

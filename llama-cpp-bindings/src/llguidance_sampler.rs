@@ -40,8 +40,9 @@ fn build_tok_env(model: &LlamaModel) -> Arc<ApproximateTokEnv> {
     let info = TokRxInfo::new(n_vocab, tok_eos);
 
     let mut words = Vec::with_capacity(n_vocab as usize);
-    for i in 0..n_vocab.cast_signed() {
-        let token = LlamaToken(i);
+
+    for token_id in 0..n_vocab.cast_signed() {
+        let token = LlamaToken(token_id);
         let bytes = model
             .token_to_piece_bytes(token, 32, false, None)
             .unwrap_or_default();

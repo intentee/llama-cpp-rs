@@ -6,7 +6,7 @@ use std::str::Utf8Error;
 /// prompt. Internally the template is stored as a `CString` to avoid round-trip conversions
 /// within the FFI.
 #[derive(Eq, PartialEq, Clone, PartialOrd, Ord, Hash)]
-pub struct LlamaChatTemplate(pub(super) CString);
+pub struct LlamaChatTemplate(pub CString);
 
 impl LlamaChatTemplate {
     /// Create a new template from a string. This can either be the name of a llama.cpp [chat template](https://github.com/ggerganov/llama.cpp/blob/8a8c4ceb6050bd9392609114ca56ae6d26f5b8f5/src/llama-chat.cpp#L27-L61)

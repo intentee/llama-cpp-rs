@@ -89,9 +89,9 @@ impl<'tokens> LlamaBatch<'tokens> {
             // for (size_t i = 0; i < seq_ids.size(); ++i) {
             //     batch.seq_id[batch.n_tokens][i] = seq_ids[i];
             // }
-            for (i, seq_id) in seq_ids.iter().enumerate() {
+            for (seq_index, seq_id) in seq_ids.iter().enumerate() {
                 let tmp = *self.llama_batch.seq_id.add(offset_usize);
-                tmp.add(i).write(*seq_id);
+                tmp.add(seq_index).write(*seq_id);
             }
             // batch.logits  [batch.n_tokens] = logits;
             self.llama_batch
@@ -103,10 +103,10 @@ impl<'tokens> LlamaBatch<'tokens> {
         if logits {
             self.initialized_logits.push(offset);
         } else {
-            self.initialized_logits.retain(|l| l != &offset);
+            self.initialized_logits
+                .retain(|logit_offset| logit_offset != &offset);
         }
 
-        // batch.n_tokens++;
         self.llama_batch.n_tokens += 1;
 
         Ok(())
@@ -144,8 +144,13 @@ impl<'tokens> LlamaBatch<'tokens> {
                 ))
             })?;
 
-        for (i, token) in (0..).zip(tokens.iter()) {
-            self.add(*token, i, &[seq_id], logits_all || i == last_index)?;
+        for (position, token) in (0..).zip(tokens.iter()) {
+            self.add(
+                *token,
+                position,
+                &[seq_id],
+                logits_all || position == last_index,
+            )?;
         }
 
         Ok(())

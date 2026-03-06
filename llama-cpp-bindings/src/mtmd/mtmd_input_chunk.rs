@@ -16,7 +16,7 @@ use super::mtmd_input_chunk_type::{MtmdInputChunkType, MtmdInputChunkTypeError};
 pub struct MtmdInputChunk {
     /// Raw pointer to the underlying `mtmd_input_chunk`.
     pub chunk: NonNull<llama_cpp_bindings_sys::mtmd_input_chunk>,
-    pub(super) owned: bool,
+    pub owned: bool,
 }
 
 impl MtmdInputChunk {

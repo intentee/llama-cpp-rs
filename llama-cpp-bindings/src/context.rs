@@ -24,7 +24,7 @@ pub mod session;
 pub struct LlamaContext<'model> {
     /// Raw pointer to the underlying `llama_context`.
     pub context: NonNull<llama_cpp_bindings_sys::llama_context>,
-    /// a reference to the contexts model.
+    /// A reference to the context's model.
     pub model: &'model LlamaModel,
     initialized_logits: Vec<i32>,
     embeddings_enabled: bool,
@@ -120,7 +120,7 @@ impl<'model> LlamaContext<'model> {
         }
     }
 
-    /// Get the embeddings for the `i`th sequence in the current context.
+    /// Get the embeddings for the given sequence in the current context.
     ///
     /// # Returns
     ///
@@ -136,7 +136,7 @@ impl<'model> LlamaContext<'model> {
     /// # Panics
     ///
     /// * `n_embd` does not fit into a usize
-    pub fn embeddings_seq_ith(&self, i: i32) -> Result<&[f32], EmbeddingsError> {
+    pub fn embeddings_seq_ith(&self, sequence_index: i32) -> Result<&[f32], EmbeddingsError> {
         if !self.embeddings_enabled {
             return Err(EmbeddingsError::NotEnabled);
         }
@@ -145,10 +145,11 @@ impl<'model> LlamaContext<'model> {
             usize::try_from(self.model.n_embd()).expect("n_embd does not fit into a usize");
 
         unsafe {
-            let embedding =
-                llama_cpp_bindings_sys::llama_get_embeddings_seq(self.context.as_ptr(), i);
+            let embedding = llama_cpp_bindings_sys::llama_get_embeddings_seq(
+                self.context.as_ptr(),
+                sequence_index,
+            );
 
-            // Technically also possible whenever `i >= max(batch.n_seq)`, but can't check that here.
             if embedding.is_null() {
                 Err(EmbeddingsError::NonePoolType)
             } else {
@@ -157,7 +158,7 @@ impl<'model> LlamaContext<'model> {
         }
     }
 
-    /// Get the embeddings for the `i`th token in the current context.
+    /// Get the embeddings for the given token in the current context.
     ///
     /// # Returns
     ///
@@ -173,7 +174,7 @@ impl<'model> LlamaContext<'model> {
     /// # Panics
     ///
     /// * `n_embd` does not fit into a usize
-    pub fn embeddings_ith(&self, i: i32) -> Result<&[f32], EmbeddingsError> {
+    pub fn embeddings_ith(&self, token_index: i32) -> Result<&[f32], EmbeddingsError> {
         if !self.embeddings_enabled {
             return Err(EmbeddingsError::NotEnabled);
         }
@@ -182,9 +183,11 @@ impl<'model> LlamaContext<'model> {
             usize::try_from(self.model.n_embd()).expect("n_embd does not fit into a usize");
 
         unsafe {
-            let embedding =
-                llama_cpp_bindings_sys::llama_get_embeddings_ith(self.context.as_ptr(), i);
-            // Technically also possible whenever `i >= batch.n_tokens`, but no good way of checking `n_tokens` here.
+            let embedding = llama_cpp_bindings_sys::llama_get_embeddings_ith(
+                self.context.as_ptr(),
+                token_index,
+            );
+
             if embedding.is_null() {
                 Err(EmbeddingsError::LogitsNotEnabled)
             } else {
@@ -203,15 +206,15 @@ impl<'model> LlamaContext<'model> {
     ///
     /// - underlying logits data is null
     pub fn candidates(&self) -> impl Iterator<Item = LlamaTokenData> + '_ {
-        (0_i32..).zip(self.get_logits()).map(|(i, logit)| {
-            let token = LlamaToken::new(i);
+        (0_i32..).zip(self.get_logits()).map(|(token_id, logit)| {
+            let token = LlamaToken::new(token_id);
             LlamaTokenData::new(token, *logit, 0_f32)
         })
     }
 
     /// Get the token data array for the last token in the context.
     ///
-    /// This is a convience method that implements:
+    /// This is a convenience method that implements:
     /// ```ignore
     /// LlamaTokenDataArray::from_iter(ctx.candidates(), false)
     /// ```
@@ -253,51 +256,54 @@ impl<'model> LlamaContext<'model> {
     /// # Panics
     ///
     /// - logit `i` is not initialized.
-    pub fn candidates_ith(&self, i: i32) -> impl Iterator<Item = LlamaTokenData> + '_ {
-        (0_i32..).zip(self.get_logits_ith(i)).map(|(i, logit)| {
-            let token = LlamaToken::new(i);
-            LlamaTokenData::new(token, *logit, 0_f32)
-        })
+    pub fn candidates_ith(&self, token_index: i32) -> impl Iterator<Item = LlamaTokenData> + '_ {
+        (0_i32..)
+            .zip(self.get_logits_ith(token_index))
+            .map(|(token_id, logit)| {
+                let token = LlamaToken::new(token_id);
+                LlamaTokenData::new(token, *logit, 0_f32)
+            })
     }
 
     /// Get the token data array for the ith token in the context.
     ///
-    /// This is a convience method that implements:
+    /// This is a convenience method that implements:
     /// ```ignore
-    /// LlamaTokenDataArray::from_iter(ctx.candidates_ith(i), false)
+    /// LlamaTokenDataArray::from_iter(ctx.candidates_ith(token_index), false)
     /// ```
     ///
     /// # Panics
     ///
     /// - logit `i` is not initialized.
     #[must_use]
-    pub fn token_data_array_ith(&self, i: i32) -> LlamaTokenDataArray {
-        LlamaTokenDataArray::from_iter(self.candidates_ith(i), false)
+    pub fn token_data_array_ith(&self, token_index: i32) -> LlamaTokenDataArray {
+        LlamaTokenDataArray::from_iter(self.candidates_ith(token_index), false)
     }
 
     /// Get the logits for the ith token in the context.
     ///
     /// # Panics
     ///
-    /// - `i` is greater than `n_ctx`
+    /// - `token_index` is greater than `n_ctx`
     /// - `n_vocab` does not fit into a usize
-    /// - logit `i` is not initialized.
+    /// - logit `token_index` is not initialized.
     #[must_use]
-    pub fn get_logits_ith(&self, i: i32) -> &[f32] {
+    pub fn get_logits_ith(&self, token_index: i32) -> &[f32] {
         assert!(
-            self.initialized_logits.contains(&i),
-            "logit {i} is not initialized. only {:?} is",
+            self.initialized_logits.contains(&token_index),
+            "logit {token_index} is not initialized. only {:?} is",
             self.initialized_logits
         );
         assert!(
-            self.n_ctx() > u32::try_from(i).expect("i does not fit into a u32"),
-            "n_ctx ({}) must be greater than i ({})",
+            self.n_ctx() > u32::try_from(token_index).expect("token_index does not fit into a u32"),
+            "n_ctx ({}) must be greater than token_index ({})",
             self.n_ctx(),
-            i
+            token_index
         );
 
-        let data =
-            unsafe { llama_cpp_bindings_sys::llama_get_logits_ith(self.context.as_ptr(), i) };
+        let data = unsafe {
+            llama_cpp_bindings_sys::llama_get_logits_ith(self.context.as_ptr(), token_index)
+        };
         let len = usize::try_from(self.model.n_vocab()).expect("n_vocab does not fit into a usize");
 
         unsafe { slice::from_raw_parts(data, len) }

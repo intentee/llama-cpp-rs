@@ -52,8 +52,9 @@ fn cstr_to_string(ptr: *const c_char) -> String {
 #[must_use]
 pub fn list_llama_ggml_backend_devices() -> Vec<LlamaBackendDevice> {
     let mut devices = Vec::new();
+    let device_count = unsafe { llama_cpp_bindings_sys::ggml_backend_dev_count() };
 
-    for device_index in 0..unsafe { llama_cpp_bindings_sys::ggml_backend_dev_count() } {
+    for device_index in 0..device_count {
         let dev = unsafe { llama_cpp_bindings_sys::ggml_backend_dev_get(device_index) };
         let props = unsafe {
             let mut props = std::mem::zeroed();

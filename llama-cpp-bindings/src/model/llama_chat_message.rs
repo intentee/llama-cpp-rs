@@ -5,8 +5,8 @@ use crate::NewLlamaChatMessageError;
 /// A Safe wrapper around `llama_chat_message`
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct LlamaChatMessage {
-    pub(super) role: CString,
-    pub(super) content: CString,
+    pub role: CString,
+    pub content: CString,
 }
 
 impl LlamaChatMessage {

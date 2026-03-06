@@ -128,7 +128,7 @@ impl State {
 
         let (module, text) = text
             .char_indices()
-            .take_while(|(_, c)| c.is_ascii_lowercase() || *c == '_')
+            .take_while(|(_, ch)| ch.is_ascii_lowercase() || *ch == '_')
             .last()
             .and_then(|(pos, _)| {
                 let next_two = text.get(pos + 1..pos + 3);
@@ -151,7 +151,9 @@ impl State {
                     (&fields.message, Some(&text as &dyn tracing::field::Value)),
                     (
                         &fields.target,
-                        module.as_ref().map(|s| s as &dyn tracing::field::Value),
+                        module
+                            .as_ref()
+                            .map(|module_name| module_name as &dyn tracing::field::Value),
                     ),
                 ]),
             ));

@@ -171,7 +171,7 @@ impl From<NonZeroI32> for DecodeError {
         match value.get() {
             1 => DecodeError::NoKvCacheSlot,
             -1 => DecodeError::NTokensZero,
-            i => DecodeError::Unknown(i),
+            error_code => DecodeError::Unknown(error_code),
         }
     }
 }
@@ -182,7 +182,7 @@ impl From<NonZeroI32> for EncodeError {
         match value.get() {
             1 => EncodeError::NoKvCacheSlot,
             -1 => EncodeError::NTokensZero,
-            i => EncodeError::Unknown(i),
+            error_code => EncodeError::Unknown(error_code),
         }
     }
 }

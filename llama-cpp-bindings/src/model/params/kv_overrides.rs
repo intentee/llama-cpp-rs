@@ -62,6 +62,7 @@ impl Iterator for KvOverrideValueIterator<'_> {
         let key = unsafe { CStr::from_ptr(current.key.as_ptr()).to_owned() };
 
         self.current += 1;
+
         Some((key, value))
     }
 }
