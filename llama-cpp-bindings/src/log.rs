@@ -260,9 +260,7 @@ impl State {
             llama_cpp_bindings_sys::GGML_LOG_LEVEL_DEBUG
             | llama_cpp_bindings_sys::GGML_LOG_LEVEL_INFO
             | llama_cpp_bindings_sys::GGML_LOG_LEVEL_WARN
-            | llama_cpp_bindings_sys::GGML_LOG_LEVEL_ERROR => {
-                self.generate_log(level, text)
-            }
+            | llama_cpp_bindings_sys::GGML_LOG_LEVEL_ERROR => self.generate_log(level, text),
             llama_cpp_bindings_sys::GGML_LOG_LEVEL_CONT => unreachable!(),
             _ => {
                 tracing::warn!(

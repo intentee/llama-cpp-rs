@@ -26,8 +26,8 @@ pub struct ChatTemplateResult {
     pub chat_format: i32,
     /// Optional serialized PEG parser for tool-call parsing.
     pub parser: Option<String>,
-    /// Whether the parser expects a forced-open thinking block.
-    pub thinking_forced_open: bool,
+    /// Whether the model supports thinking/reasoning blocks.
+    pub supports_thinking: bool,
     /// Whether tool calls should be parsed from the response.
     pub parse_tool_calls: bool,
 }
@@ -39,7 +39,7 @@ pub fn new_empty_chat_template_raw_result() -> llama_cpp_bindings_sys::llama_rs_
         grammar: ptr::null_mut(),
         parser: ptr::null_mut(),
         chat_format: 0,
-        thinking_forced_open: false,
+        supports_thinking: false,
         grammar_lazy: false,
         grammar_triggers: ptr::null_mut(),
         grammar_triggers_count: 0,
@@ -183,7 +183,7 @@ pub unsafe fn parse_chat_template_raw_result(
             additional_stops,
             chat_format: raw.chat_format,
             parser,
-            thinking_forced_open: raw.thinking_forced_open,
+            supports_thinking: raw.supports_thinking,
             parse_tool_calls,
         })
     })();
@@ -215,7 +215,6 @@ impl ChatTemplateResult {
                 parser_cstr
                     .as_ref()
                     .map_or(ptr::null(), |cstr| cstr.as_ptr()),
-                self.thinking_forced_open,
                 &raw mut out_json,
             )
         };
@@ -249,7 +248,6 @@ impl ChatTemplateResult {
                 parser_cstr
                     .as_ref()
                     .map_or(ptr::null(), |cstr| cstr.as_ptr()),
-                self.thinking_forced_open,
             )
         };
         let state = NonNull::new(state).ok_or(ChatParseError::NullResult)?;
