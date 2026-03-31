@@ -35,16 +35,6 @@ use crate::{
     LlamaModelLoadError, MetaValError, StringToTokenError, TokenToStringError,
 };
 
-fn finish_lora_adapter_init(
-    raw_adapter: *mut llama_cpp_bindings_sys::llama_adapter_lora,
-) -> Result<LlamaLoraAdapter, LlamaLoraAdapterInitError> {
-    let adapter = NonNull::new(raw_adapter).ok_or(LlamaLoraAdapterInitError::NullResult)?;
-
-    Ok(LlamaLoraAdapter {
-        lora_adapter: adapter,
-    })
-}
-
 pub mod add_bos;
 pub mod chat_template_result;
 pub mod grammar_trigger;
@@ -555,10 +545,6 @@ impl LlamaModel {
     ) -> Result<Self, LlamaModelLoadError> {
         let path = path.as_ref();
 
-        if !path.exists() {
-            return Err(LlamaModelLoadError::FileNotFound(path.to_path_buf()));
-        }
-
         let path_str = path
             .to_str()
             .ok_or_else(|| LlamaModelLoadError::PathToStrError(path.to_path_buf()))?;
@@ -568,7 +554,13 @@ impl LlamaModel {
             llama_cpp_bindings_sys::llama_load_model_from_file(cstr.as_ptr(), params.params)
         };
 
-        let model = NonNull::new(llama_model).ok_or(LlamaModelLoadError::NullResult)?;
+        let model = match NonNull::new(llama_model) {
+            Some(ptr) => ptr,
+            None if !path.exists() => {
+                return Err(LlamaModelLoadError::FileNotFound(path.to_path_buf()));
+            }
+            None => return Err(LlamaModelLoadError::NullResult),
+        };
 
         Ok(Self { model })
     }
@@ -588,20 +580,26 @@ impl LlamaModel {
     ) -> Result<LlamaLoraAdapter, LlamaLoraAdapterInitError> {
         let path = path.as_ref();
 
-        if !path.exists() {
-            return Err(LlamaLoraAdapterInitError::FileNotFound(path.to_path_buf()));
-        }
-
-        let path = path
+        let path_str = path
             .to_str()
             .ok_or_else(|| LlamaLoraAdapterInitError::PathToStrError(path.to_path_buf()))?;
 
-        let cstr = CString::new(path).expect("valid UTF-8 path cannot contain null bytes");
-        let adapter = unsafe {
+        let cstr = CString::new(path_str).expect("valid UTF-8 path cannot contain null bytes");
+        let raw_adapter = unsafe {
             llama_cpp_bindings_sys::llama_adapter_lora_init(self.model.as_ptr(), cstr.as_ptr())
         };
 
-        finish_lora_adapter_init(adapter)
+        let adapter = match NonNull::new(raw_adapter) {
+            Some(ptr) => ptr,
+            None if !path.exists() => {
+                return Err(LlamaLoraAdapterInitError::FileNotFound(path.to_path_buf()));
+            }
+            None => return Err(LlamaLoraAdapterInitError::NullResult),
+        };
+
+        Ok(LlamaLoraAdapter {
+            lora_adapter: adapter,
+        })
     }
 
     /// Create a new context from this model.
@@ -938,27 +936,6 @@ mod extract_meta_string_tests {
     fn truncated_buffer_to_string_with_invalid_utf8_returns_error() {
         let invalid_utf8 = vec![0xff, 0xfe, 0xfd];
         let result = super::truncated_buffer_to_string(invalid_utf8, 3);
-
-        assert!(result.is_err());
-    }
-}
-
-#[cfg(test)]
-mod finish_lora_adapter_init_tests {
-    use std::ptr::NonNull;
-
-    use super::finish_lora_adapter_init;
-
-    #[test]
-    fn finish_lora_adapter_init_stores_pointer() {
-        let adapter = finish_lora_adapter_init(NonNull::dangling().as_ptr()).unwrap();
-
-        assert_eq!(adapter.lora_adapter, NonNull::dangling());
-    }
-
-    #[test]
-    fn finish_lora_adapter_init_null_returns_error() {
-        let result = finish_lora_adapter_init(std::ptr::null_mut());
 
         assert!(result.is_err());
     }

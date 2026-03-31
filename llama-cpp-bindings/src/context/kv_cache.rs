@@ -18,7 +18,7 @@ pub enum KvCacheConversionError {
     P1TooLarge(#[source] TryFromIntError),
     /// The operation is not supported by the current model/context configuration.
     #[error("operation not supported by this model: {0}")]
-    UnsupportedOperation(String),
+    UnsupportedOperation(&'static str),
 }
 
 impl LlamaContext<'_> {
@@ -110,7 +110,7 @@ impl LlamaContext<'_> {
     /// # Parameters
     ///
     /// * `seq_id` - The sequence id to keep
-    pub fn llama_kv_cache_seq_keep(&mut self, seq_id: i32) {
+    pub fn kv_cache_seq_keep(&mut self, seq_id: i32) {
         let mem = unsafe { llama_cpp_bindings_sys::llama_get_memory(self.context.as_ptr()) };
         unsafe { llama_cpp_bindings_sys::llama_memory_seq_keep(mem, seq_id) }
     }
@@ -159,7 +159,7 @@ impl LlamaContext<'_> {
             Ok(())
         } else {
             Err(KvCacheConversionError::UnsupportedOperation(
-                "seq_add requires n_pos_per_embd == 1".to_string(),
+                "seq_add requires n_pos_per_embd == 1",
             ))
         }
     }
@@ -209,7 +209,7 @@ impl LlamaContext<'_> {
             Ok(())
         } else {
             Err(KvCacheConversionError::UnsupportedOperation(
-                "seq_div requires n_pos_per_embd == 1".to_string(),
+                "seq_div requires n_pos_per_embd == 1",
             ))
         }
     }
@@ -355,7 +355,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn llama_kv_cache_seq_keep_retains_specified_sequence() {
+    fn kv_cache_seq_keep_retains_specified_sequence() {
         let (backend, model) = test_model::load_default_model().unwrap();
         let ctx_params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(512));
         let mut context = model.new_context(&backend, ctx_params).unwrap();
@@ -365,7 +365,7 @@ mod tests {
         batch.add_sequence(&tokens, 0, false).unwrap();
         context.decode(&mut batch).unwrap();
 
-        context.llama_kv_cache_seq_keep(0);
+        context.kv_cache_seq_keep(0);
 
         assert!(context.kv_cache_seq_pos_max(0) >= 0);
     }
@@ -390,11 +390,7 @@ mod tests {
     #[test]
     #[serial]
     fn kv_cache_seq_add_succeeds_on_embedding_model() {
-        let backend = crate::llama_backend::LlamaBackend::init().unwrap();
-        let model_path = test_model::download_embedding_model().unwrap();
-        let model_params = crate::model::params::LlamaModelParams::default();
-        let model =
-            crate::model::LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_embedding_model().unwrap();
         let ctx_params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(512));
         let mut context = model.new_context(&backend, ctx_params).unwrap();
 
@@ -411,11 +407,7 @@ mod tests {
     #[test]
     #[serial]
     fn kv_cache_seq_div_succeeds_on_embedding_model() {
-        let backend = crate::llama_backend::LlamaBackend::init().unwrap();
-        let model_path = test_model::download_embedding_model().unwrap();
-        let model_params = crate::model::params::LlamaModelParams::default();
-        let model =
-            crate::model::LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_embedding_model().unwrap();
         let ctx_params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(512));
         let mut context = model.new_context(&backend, ctx_params).unwrap();
 

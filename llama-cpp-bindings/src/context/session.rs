@@ -441,19 +441,14 @@ mod tests {
     use serial_test::serial;
 
     use crate::context::params::LlamaContextParams;
-    use crate::llama_backend::LlamaBackend;
     use crate::llama_batch::LlamaBatch;
-    use crate::model::params::LlamaModelParams;
-    use crate::model::{AddBos, LlamaModel};
+    use crate::model::AddBos;
     use crate::test_model;
 
     #[test]
     #[serial]
     fn save_and_load_session_file() {
-        let backend = LlamaBackend::init().unwrap();
-        let model_path = test_model::download_model().unwrap();
-        let model_params = LlamaModelParams::default();
-        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_model().unwrap();
         let ctx_params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(512));
         let mut context = model.new_context(&backend, ctx_params).unwrap();
 
@@ -474,10 +469,7 @@ mod tests {
     #[test]
     #[serial]
     fn get_state_size_is_positive() {
-        let backend = LlamaBackend::init().unwrap();
-        let model_path = test_model::download_model().unwrap();
-        let model_params = LlamaModelParams::default();
-        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_model().unwrap();
         let ctx_params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(512));
         let context = model.new_context(&backend, ctx_params).unwrap();
         assert!(context.get_state_size() > 0);
@@ -486,10 +478,7 @@ mod tests {
     #[test]
     #[serial]
     fn state_seq_save_and_load_file_roundtrip() {
-        let backend = LlamaBackend::init().unwrap();
-        let model_path = test_model::download_model().unwrap();
-        let model_params = LlamaModelParams::default();
-        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_model().unwrap();
         let ctx_params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(512));
         let mut context = model.new_context(&backend, ctx_params).unwrap();
 
@@ -515,10 +504,7 @@ mod tests {
     #[test]
     #[serial]
     fn copy_state_data_and_set_state_data_roundtrip() {
-        let backend = LlamaBackend::init().unwrap();
-        let model_path = test_model::download_model().unwrap();
-        let model_params = LlamaModelParams::default();
-        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_model().unwrap();
         let ctx_params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(512));
         let mut context = model.new_context(&backend, ctx_params).unwrap();
 
@@ -539,10 +525,7 @@ mod tests {
     #[test]
     #[serial]
     fn state_load_file_with_nonexistent_file_returns_error() {
-        let backend = LlamaBackend::init().unwrap();
-        let model_path = test_model::download_model().unwrap();
-        let model_params = LlamaModelParams::default();
-        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_model().unwrap();
         let ctx_params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(512));
         let mut context = model.new_context(&backend, ctx_params).unwrap();
 
@@ -554,10 +537,7 @@ mod tests {
     #[test]
     #[serial]
     fn state_seq_load_file_with_nonexistent_file_returns_error() {
-        let backend = LlamaBackend::init().unwrap();
-        let model_path = test_model::download_model().unwrap();
-        let model_params = LlamaModelParams::default();
-        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_model().unwrap();
         let ctx_params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(512));
         let mut context = model.new_context(&backend, ctx_params).unwrap();
 
@@ -569,10 +549,7 @@ mod tests {
     #[test]
     #[serial]
     fn state_save_file_to_invalid_directory_returns_failed_to_save() {
-        let backend = LlamaBackend::init().unwrap();
-        let model_path = test_model::download_model().unwrap();
-        let model_params = LlamaModelParams::default();
-        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_model().unwrap();
         let ctx_params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(512));
         let context = model.new_context(&backend, ctx_params).unwrap();
 
@@ -584,10 +561,7 @@ mod tests {
     #[test]
     #[serial]
     fn state_seq_save_file_to_invalid_directory_returns_failed_to_save() {
-        let backend = LlamaBackend::init().unwrap();
-        let model_path = test_model::download_model().unwrap();
-        let model_params = LlamaModelParams::default();
-        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_model().unwrap();
         let ctx_params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(512));
         let context = model.new_context(&backend, ctx_params).unwrap();
 
@@ -599,10 +573,7 @@ mod tests {
     #[test]
     #[serial]
     fn state_load_file_with_zero_max_tokens_returns_error() {
-        let backend = LlamaBackend::init().unwrap();
-        let model_path = test_model::download_model().unwrap();
-        let model_params = LlamaModelParams::default();
-        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_model().unwrap();
         let ctx_params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(512));
         let mut context = model.new_context(&backend, ctx_params).unwrap();
 
@@ -623,10 +594,7 @@ mod tests {
     #[test]
     #[serial]
     fn state_seq_load_file_with_zero_max_tokens_returns_error() {
-        let backend = LlamaBackend::init().unwrap();
-        let model_path = test_model::download_model().unwrap();
-        let model_params = LlamaModelParams::default();
-        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_model().unwrap();
         let ctx_params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(512));
         let mut context = model.new_context(&backend, ctx_params).unwrap();
 
@@ -649,10 +617,7 @@ mod tests {
     #[test]
     #[serial]
     fn state_load_file_with_insufficient_max_tokens_returns_length_error() {
-        let backend = LlamaBackend::init().unwrap();
-        let model_path = test_model::download_model().unwrap();
-        let model_params = LlamaModelParams::default();
-        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_model().unwrap();
         let ctx_params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(512));
         let mut context = model.new_context(&backend, ctx_params).unwrap();
 
@@ -678,10 +643,7 @@ mod tests {
     #[test]
     #[serial]
     fn state_seq_load_file_with_insufficient_max_tokens_returns_length_error() {
-        let backend = LlamaBackend::init().unwrap();
-        let model_path = test_model::download_model().unwrap();
-        let model_params = LlamaModelParams::default();
-        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_model().unwrap();
         let ctx_params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(512));
         let mut context = model.new_context(&backend, ctx_params).unwrap();
 
@@ -713,10 +675,7 @@ mod tests {
         use std::ffi::OsStr;
         use std::os::unix::ffi::OsStrExt;
 
-        let backend = LlamaBackend::init().unwrap();
-        let model_path = test_model::download_model().unwrap();
-        let model_params = LlamaModelParams::default();
-        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_model().unwrap();
         let ctx_params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(512));
         let context = model.new_context(&backend, ctx_params).unwrap();
 
@@ -733,10 +692,7 @@ mod tests {
         use std::ffi::OsStr;
         use std::os::unix::ffi::OsStrExt;
 
-        let backend = LlamaBackend::init().unwrap();
-        let model_path = test_model::download_model().unwrap();
-        let model_params = LlamaModelParams::default();
-        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_model().unwrap();
         let ctx_params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(512));
         let mut context = model.new_context(&backend, ctx_params).unwrap();
 
@@ -753,10 +709,7 @@ mod tests {
         use std::ffi::OsStr;
         use std::os::unix::ffi::OsStrExt;
 
-        let backend = LlamaBackend::init().unwrap();
-        let model_path = test_model::download_model().unwrap();
-        let model_params = LlamaModelParams::default();
-        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_model().unwrap();
         let ctx_params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(512));
         let context = model.new_context(&backend, ctx_params).unwrap();
 
@@ -773,10 +726,7 @@ mod tests {
         use std::ffi::OsStr;
         use std::os::unix::ffi::OsStrExt;
 
-        let backend = LlamaBackend::init().unwrap();
-        let model_path = test_model::download_model().unwrap();
-        let model_params = LlamaModelParams::default();
-        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_model().unwrap();
         let ctx_params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(512));
         let mut context = model.new_context(&backend, ctx_params).unwrap();
 

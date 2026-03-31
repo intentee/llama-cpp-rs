@@ -11,19 +11,19 @@ QWEN3_5_0_8B_ENV = \
 	LLAMA_TEST_HF_ENCODER_MODEL=t5-small.bf16.gguf
 
 .PHONY: test.unit
-test.unit:
+test.unit: clippy
 	cargo test --lib -p llama-cpp-bindings
 
 .PHONY: test.qwen3.5_0.8B
-test.qwen3.5_0.8B:
+test.qwen3.5_0.8B: clippy
 	$(QWEN3_5_0_8B_ENV) cargo test $(CARGO_TEST_LLM_FLAGS)
 
 .PHONY: test.qwen3.5_0.8B.coverage.run
-test.qwen3.5_0.8B.coverage.run:
+test.qwen3.5_0.8B.coverage.run: clippy
 	$(QWEN3_5_0_8B_ENV) cargo llvm-cov $(CARGO_COV_LLM_FLAGS) -- --test-threads=1
 
 .PHONY: test.qwen3.5_0.8B.coverage
-test.qwen3.5_0.8B.coverage:
+test.qwen3.5_0.8B.coverage: clippy
 	$(QWEN3_5_0_8B_ENV) cargo llvm-cov $(CARGO_COV_LLM_FLAGS) --fail-under-lines 99.9 -- --test-threads=1
 
 .PHONY: test.qwen3.5_0.8B.coverage.json

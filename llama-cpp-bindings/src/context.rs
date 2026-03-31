@@ -581,11 +581,7 @@ mod tests {
     #[test]
     #[serial]
     fn decode_with_embeddings_enabled() {
-        let backend = crate::llama_backend::LlamaBackend::init().unwrap();
-        let model_path = test_model::download_embedding_model().unwrap();
-        let model_params = crate::model::params::LlamaModelParams::default();
-        let model =
-            crate::model::LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_embedding_model().unwrap();
         let ctx_params = LlamaContextParams::default()
             .with_n_ctx(std::num::NonZeroU32::new(512))
             .with_embeddings(true);
@@ -602,11 +598,7 @@ mod tests {
     #[test]
     #[serial]
     fn embeddings_seq_ith_returns_valid_embeddings() {
-        let backend = crate::llama_backend::LlamaBackend::init().unwrap();
-        let model_path = test_model::download_embedding_model().unwrap();
-        let model_params = crate::model::params::LlamaModelParams::default();
-        let model =
-            crate::model::LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_embedding_model().unwrap();
         let ctx_params = LlamaContextParams::default()
             .with_n_ctx(std::num::NonZeroU32::new(512))
             .with_embeddings(true);
@@ -624,11 +616,7 @@ mod tests {
     #[test]
     #[serial]
     fn embeddings_ith_returns_valid_embeddings() {
-        let backend = crate::llama_backend::LlamaBackend::init().unwrap();
-        let model_path = test_model::download_embedding_model().unwrap();
-        let model_params = crate::model::params::LlamaModelParams::default();
-        let model =
-            crate::model::LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_embedding_model().unwrap();
         let ctx_params = LlamaContextParams::default()
             .with_n_ctx(std::num::NonZeroU32::new(512))
             .with_embeddings(true);
@@ -709,11 +697,7 @@ mod tests {
     #[test]
     #[serial]
     fn embeddings_ith_returns_null_embedding_error_for_non_embedding_token() {
-        let backend = crate::llama_backend::LlamaBackend::init().unwrap();
-        let model_path = test_model::download_embedding_model().unwrap();
-        let model_params = crate::model::params::LlamaModelParams::default();
-        let model =
-            crate::model::LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_embedding_model().unwrap();
         let ctx_params = LlamaContextParams::default()
             .with_n_ctx(std::num::NonZeroU32::new(512))
             .with_embeddings(true);

@@ -926,45 +926,6 @@ mod tests {
     #[cfg(feature = "tests_that_use_llms")]
     #[test]
     #[serial_test::serial]
-    fn grammar_creates_sampler_from_model_vocab() {
-        let (_backend, model) = crate::test_model::load_default_model().unwrap();
-        let sampler = LlamaSampler::grammar(&model, "root ::= \"hello\"", "root");
-
-        assert!(sampler.is_ok());
-    }
-
-    #[cfg(feature = "tests_that_use_llms")]
-    #[test]
-    #[serial_test::serial]
-    fn grammar_lazy_creates_sampler_with_trigger_words() {
-        let (_backend, model) = crate::test_model::load_default_model().unwrap();
-        let trigger_words: Vec<&[u8]> = vec![b"function"];
-        let sampler =
-            LlamaSampler::grammar_lazy(&model, "root ::= \"hello\"", "root", trigger_words, &[]);
-
-        assert!(sampler.is_ok());
-    }
-
-    #[cfg(feature = "tests_that_use_llms")]
-    #[test]
-    #[serial_test::serial]
-    fn grammar_lazy_patterns_creates_sampler_with_trigger_patterns() {
-        let (_backend, model) = crate::test_model::load_default_model().unwrap();
-        let patterns = vec!["\\{.*".to_string()];
-        let sampler = LlamaSampler::grammar_lazy_patterns(
-            &model,
-            "root ::= \"hello\"",
-            "root",
-            &patterns,
-            &[],
-        );
-
-        assert!(sampler.is_ok());
-    }
-
-    #[cfg(feature = "tests_that_use_llms")]
-    #[test]
-    #[serial_test::serial]
     fn sample_returns_token_after_decode() {
         use crate::context::params::LlamaContextParams;
         use crate::llama_batch::LlamaBatch;

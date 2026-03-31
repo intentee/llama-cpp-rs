@@ -106,6 +106,20 @@ pub fn load_default_model() -> Result<(crate::llama_backend::LlamaBackend, crate
     Ok((backend, model))
 }
 
+/// Loads the default embedding model and backend.
+///
+/// # Errors
+/// Returns an error if the backend cannot be initialized or the embedding model cannot be loaded.
+pub fn load_default_embedding_model()
+-> Result<(crate::llama_backend::LlamaBackend, crate::model::LlamaModel)> {
+    let backend = crate::llama_backend::LlamaBackend::init()?;
+    let model_path = download_embedding_model()?;
+    let model_params = crate::model::params::LlamaModelParams::default();
+    let model = crate::model::LlamaModel::load_from_file(&backend, model_path, &model_params)?;
+
+    Ok((backend, model))
+}
+
 /// Loads the default test model, backend, and multimodal context.
 ///
 /// # Errors

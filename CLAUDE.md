@@ -57,6 +57,7 @@ Never make assumptions or guesses about code behavior; always investigate. Alway
 - If some piece of code can be handled by proper types, use types instead. Write tests as a last resort.
 - In unit tests, make sure there is always just a single correct way to do a specific thing. Never accept fuzzy inputs from end users.
 - When working on tests, if you notice that the tested code can be better, you can suggest changes.
+- When running tests, always save output to a temporary file, so you won't need to re-run them to analyze it.
 
 ## Committing Changes
 

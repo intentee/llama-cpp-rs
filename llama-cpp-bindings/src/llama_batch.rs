@@ -134,9 +134,6 @@ impl<'tokens> LlamaBatch<'tokens> {
 
         if logits {
             self.initialized_logits.push(offset);
-        } else {
-            self.initialized_logits
-                .retain(|logit_offset| logit_offset != &offset);
         }
 
         self.llama_batch.n_tokens += 1;
