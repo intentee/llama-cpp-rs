@@ -27,7 +27,18 @@ impl LlamaToken {
     /// assert_eq!(token, LlamaToken(0));
     /// ```
     #[must_use]
-    pub fn new(token_id: i32) -> Self {
+    pub const fn new(token_id: i32) -> Self {
         Self(token_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LlamaToken;
+
+    #[test]
+    fn display_shows_inner_value() {
+        let token = LlamaToken::new(42);
+        assert_eq!(format!("{token}"), "42");
     }
 }

@@ -14,7 +14,7 @@ pub struct KvOverrides<'model_params> {
 impl KvOverrides<'_> {
     /// Creates a new `KvOverrides` view over the given model parameters.
     #[must_use]
-    pub fn new(model_params: &LlamaModelParams) -> KvOverrides<'_> {
+    pub const fn new(model_params: &LlamaModelParams) -> KvOverrides<'_> {
         KvOverrides { model_params }
     }
 }
@@ -45,36 +45,89 @@ impl Iterator for KvOverrideValueIterator<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let overrides = self.model_params.params.kv_overrides;
+
         if overrides.is_null() {
             return None;
         }
 
-        // SAFETY: llama.cpp seems to guarantee that the last element contains an empty key or is valid. We've checked
-        // the prev one in the last iteration, the next one should be valid or 0 (and thus safe to deref)
-        let current = unsafe { *overrides.add(self.current) };
+        loop {
+            // SAFETY: llama.cpp guarantees the last element contains an empty key.
+            // We've checked the previous one in the last iteration, the next one
+            // should be valid or 0 (and thus safe to deref).
+            let current = unsafe { *overrides.add(self.current) };
 
-        if current.key[0] == 0 {
-            return None;
+            if current.key[0] == 0 {
+                return None;
+            }
+
+            self.current += 1;
+
+            if let Ok(value) = ParamOverrideValue::try_from(&current) {
+                let key = unsafe { CStr::from_ptr(current.key.as_ptr()).to_owned() };
+
+                return Some((key, value));
+            }
         }
-
-        let value = ParamOverrideValue::from(&current);
-
-        let key = unsafe { CStr::from_ptr(current.key.as_ptr()).to_owned() };
-
-        self.current += 1;
-
-        Some((key, value))
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::CString;
+    use std::pin::pin;
+
+    use crate::model::params::LlamaModelParams;
+    use crate::model::params::param_override_value::ParamOverrideValue;
+
     #[test]
     fn kv_overrides_empty_by_default() {
-        let params = crate::model::params::LlamaModelParams::default();
+        let params = LlamaModelParams::default();
         let overrides = params.kv_overrides();
         let count = overrides.into_iter().count();
 
         assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn kv_overrides_iterates_single_entry() {
+        let mut params = pin!(LlamaModelParams::default());
+        let key = CString::new("test_key").unwrap();
+
+        params
+            .as_mut()
+            .append_kv_override(&key, ParamOverrideValue::Int(42))
+            .unwrap();
+
+        let entries: Vec<_> = params.kv_overrides().into_iter().collect();
+
+        assert_eq!(entries.len(), 1);
+        let (entry_key, entry_value) = &entries[0];
+        assert_eq!(entry_key.to_bytes(), b"test_key");
+        assert_eq!(*entry_value, ParamOverrideValue::Int(42));
+    }
+
+    #[test]
+    fn kv_overrides_new_creates_view() {
+        let params = LlamaModelParams::default();
+        let overrides = super::KvOverrides::new(&params);
+        let count = overrides.into_iter().count();
+
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn kv_overrides_skips_entry_with_unknown_tag() {
+        let mut params = pin!(LlamaModelParams::default());
+        let key = CString::new("valid_key").unwrap();
+
+        params
+            .as_mut()
+            .append_kv_override(&key, ParamOverrideValue::Int(99))
+            .unwrap();
+
+        // Corrupt the tag of the first entry to an unknown value
+        params.kv_overrides[0].tag = 9999;
+
+        assert_eq!(params.kv_overrides().into_iter().count(), 0);
     }
 }

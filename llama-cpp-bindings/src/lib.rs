@@ -40,9 +40,9 @@ pub mod token_type;
 pub use error::{
     ApplyChatTemplateError, ChatParseError, ChatTemplateError, DecodeError, EmbeddingsError,
     EncodeError, GrammarError, LlamaContextLoadError, LlamaCppError, LlamaLoraAdapterInitError,
-    LlamaLoraAdapterRemoveError, LlamaLoraAdapterSetError, LlamaModelLoadError, MetaValError,
-    ModelParamsError, NewLlamaChatMessageError, Result, SamplerAcceptError, SamplingError,
-    StringToTokenError, TokenSamplingError, TokenToStringError,
+    LlamaLoraAdapterRemoveError, LlamaLoraAdapterSetError, LlamaModelLoadError, LogitsError,
+    MetaValError, ModelParamsError, NewLlamaChatMessageError, Result, SamplerAcceptError,
+    SamplingError, StringToTokenError, TokenSamplingError, TokenToStringError,
 };
 
 pub use llama_backend_device::{
@@ -60,3 +60,6 @@ pub use llama_utility_status_to_i32::status_to_i32;
 
 pub use log::send_logs_to_tracing;
 pub use log_options::LogOptions;
+
+#[cfg(any(test, feature = "tests_that_use_llms"))]
+pub mod test_model;

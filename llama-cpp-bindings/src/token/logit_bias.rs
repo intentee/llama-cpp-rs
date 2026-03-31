@@ -24,7 +24,7 @@ impl LlamaLogitBias {
     /// let bias = LlamaLogitBias::new(token, 1.5);
     /// ```
     #[must_use]
-    pub fn new(LlamaToken(token): LlamaToken, bias: f32) -> Self {
+    pub const fn new(LlamaToken(token): LlamaToken, bias: f32) -> Self {
         Self {
             logit_bias: llama_cpp_bindings_sys::llama_logit_bias { token, bias },
         }
@@ -40,7 +40,7 @@ impl LlamaLogitBias {
     /// assert_eq!(bias.token(), token);
     /// ```
     #[must_use]
-    pub fn token(&self) -> LlamaToken {
+    pub const fn token(&self) -> LlamaToken {
         LlamaToken(self.logit_bias.token)
     }
 
@@ -54,7 +54,7 @@ impl LlamaLogitBias {
     /// assert_eq!(bias.bias(), 1.5);
     /// ```
     #[must_use]
-    pub fn bias(&self) -> f32 {
+    pub const fn bias(&self) -> f32 {
         self.logit_bias.bias
     }
 
@@ -69,7 +69,7 @@ impl LlamaLogitBias {
     /// bias.set_token(new_token);
     /// assert_eq!(bias.token(), new_token);
     /// ```
-    pub fn set_token(&mut self, token: LlamaToken) {
+    pub const fn set_token(&mut self, token: LlamaToken) {
         self.logit_bias.token = token.0;
     }
 
@@ -83,7 +83,36 @@ impl LlamaLogitBias {
     /// bias.set_bias(2.0);
     /// assert_eq!(bias.bias(), 2.0);
     /// ```
-    pub fn set_bias(&mut self, bias: f32) {
+    pub const fn set_bias(&mut self, bias: f32) {
         self.logit_bias.bias = bias;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LlamaLogitBias;
+    use crate::token::LlamaToken;
+
+    #[test]
+    fn new_stores_token_and_bias() {
+        let token = LlamaToken::new(42);
+        let logit_bias = LlamaLogitBias::new(token, 1.5);
+        assert_eq!(logit_bias.token(), token);
+        assert!((logit_bias.bias() - 1.5_f32).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn set_token_updates_token() {
+        let mut logit_bias = LlamaLogitBias::new(LlamaToken::new(1), 0.5);
+        let new_token = LlamaToken::new(99);
+        logit_bias.set_token(new_token);
+        assert_eq!(logit_bias.token(), new_token);
+    }
+
+    #[test]
+    fn set_bias_updates_bias() {
+        let mut logit_bias = LlamaLogitBias::new(LlamaToken::new(1), 0.5);
+        logit_bias.set_bias(-3.0);
+        assert!((logit_bias.bias() - (-3.0_f32)).abs() < f32::EPSILON);
     }
 }

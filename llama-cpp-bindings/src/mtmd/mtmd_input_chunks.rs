@@ -6,6 +6,14 @@ use super::mtmd_context::MtmdContext;
 use super::mtmd_error::MtmdEvalError;
 use super::mtmd_input_chunk::MtmdInputChunk;
 
+fn check_eval_result(result: i32) -> Result<(), MtmdEvalError> {
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(MtmdEvalError::EvalFailure(result))
+    }
+}
+
 /// Safe wrapper around `mtmd_input_chunks`.
 ///
 /// This is a collection of input chunks created from tokenizing text and media.
@@ -99,6 +107,15 @@ impl MtmdInputChunks {
         n_batch: i32,
         logits_last: bool,
     ) -> Result<llama_cpp_bindings_sys::llama_pos, MtmdEvalError> {
+        let context_max_batch = llama_ctx.n_batch();
+
+        if n_batch > 0 && (n_batch as u32) > context_max_batch {
+            return Err(MtmdEvalError::BatchSizeExceedsContextLimit {
+                requested: n_batch,
+                context_max: context_max_batch,
+            });
+        }
+
         let mut new_n_past: llama_cpp_bindings_sys::llama_pos = 0;
 
         let result = unsafe {
@@ -114,16 +131,56 @@ impl MtmdInputChunks {
             )
         };
 
-        if result == 0 {
-            Ok(new_n_past)
-        } else {
-            Err(MtmdEvalError::EvalFailure(result))
-        }
+        check_eval_result(result)?;
+
+        Ok(new_n_past)
     }
 }
 
 impl Drop for MtmdInputChunks {
     fn drop(&mut self) {
         unsafe { llama_cpp_bindings_sys::mtmd_input_chunks_free(self.chunks.as_ptr()) }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MtmdInputChunks;
+
+    #[test]
+    fn default_creates_empty_chunks() {
+        let chunks = MtmdInputChunks::default();
+
+        assert!(chunks.is_empty());
+        assert_eq!(chunks.len(), 0);
+    }
+
+    #[test]
+    fn get_out_of_bounds_returns_none() {
+        let chunks = MtmdInputChunks::new();
+
+        assert!(chunks.get(0).is_none());
+        assert!(chunks.get(999).is_none());
+    }
+
+    #[test]
+    fn check_eval_result_ok_for_zero() {
+        use super::check_eval_result;
+
+        assert!(check_eval_result(0).is_ok());
+    }
+
+    #[test]
+    fn check_eval_result_error_for_nonzero() {
+        use super::check_eval_result;
+
+        let result = check_eval_result(7);
+
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Eval failed with code: 7")
+        );
     }
 }

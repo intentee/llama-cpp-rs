@@ -21,8 +21,8 @@ impl TryFrom<llama_cpp_bindings_sys::llama_vocab_type> for VocabType {
 
     fn try_from(value: llama_cpp_bindings_sys::llama_vocab_type) -> Result<Self, Self::Error> {
         match value {
-            llama_cpp_bindings_sys::LLAMA_VOCAB_TYPE_BPE => Ok(VocabType::BPE),
-            llama_cpp_bindings_sys::LLAMA_VOCAB_TYPE_SPM => Ok(VocabType::SPM),
+            llama_cpp_bindings_sys::LLAMA_VOCAB_TYPE_BPE => Ok(Self::BPE),
+            llama_cpp_bindings_sys::LLAMA_VOCAB_TYPE_SPM => Ok(Self::SPM),
             unknown => Err(LlamaTokenTypeFromIntError::UnknownValue(unknown)),
         }
     }

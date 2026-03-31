@@ -38,7 +38,7 @@ impl Debug for LlamaModelParams {
             .field("split_mode", &self.split_mode())
             .field("devices", &self.devices)
             .field("kv_overrides", &"vec of kv_overrides")
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -55,7 +55,7 @@ impl LlamaModelParams {
     /// assert_eq!(count, 0);
     /// ```
     #[must_use]
-    pub fn kv_overrides(&self) -> KvOverrides<'_> {
+    pub const fn kv_overrides(&self) -> KvOverrides<'_> {
         KvOverrides::new(self)
     }
 
@@ -177,7 +177,7 @@ impl LlamaModelParams {
         // push the next one to ensure we maintain the iterator invariant of ending with a 0
         self.buft_overrides
             .push(llama_cpp_bindings_sys::llama_model_tensor_buft_override {
-                pattern: std::ptr::null(),
+                pattern: null(),
                 buft: std::ptr::null_mut(),
             });
 
@@ -191,31 +191,31 @@ impl LlamaModelParams {
 impl LlamaModelParams {
     /// Get the number of layers to offload to the GPU.
     #[must_use]
-    pub fn n_gpu_layers(&self) -> i32 {
+    pub const fn n_gpu_layers(&self) -> i32 {
         self.params.n_gpu_layers
     }
 
     /// The GPU that is used for scratch and small tensors
     #[must_use]
-    pub fn main_gpu(&self) -> i32 {
+    pub const fn main_gpu(&self) -> i32 {
         self.params.main_gpu
     }
 
     /// only load the vocabulary, no weights
     #[must_use]
-    pub fn vocab_only(&self) -> bool {
+    pub const fn vocab_only(&self) -> bool {
         self.params.vocab_only
     }
 
     /// use mmap if possible
     #[must_use]
-    pub fn use_mmap(&self) -> bool {
+    pub const fn use_mmap(&self) -> bool {
         self.params.use_mmap
     }
 
     /// force system to keep model in RAM
     #[must_use]
-    pub fn use_mlock(&self) -> bool {
+    pub const fn use_mlock(&self) -> bool {
         self.params.use_mlock
     }
 
@@ -240,11 +240,13 @@ impl LlamaModelParams {
             if dev.is_null() {
                 break;
             }
-            if let Some((index, _)) = backend_devices
+            let matched_index = backend_devices
                 .iter()
                 .enumerate()
                 .find(|&(_i, &d)| d == dev)
-            {
+                .map(|(index, _)| index);
+
+            if let Some(index) = matched_index {
                 devices.push(index);
             }
         }
@@ -271,21 +273,21 @@ impl LlamaModelParams {
     ///
     /// To enable this option, you must set `split_mode` to `LlamaSplitMode::None` to enable single GPU mode.
     #[must_use]
-    pub fn with_main_gpu(mut self, main_gpu: i32) -> Self {
+    pub const fn with_main_gpu(mut self, main_gpu: i32) -> Self {
         self.params.main_gpu = main_gpu;
         self
     }
 
     /// sets `vocab_only`
     #[must_use]
-    pub fn with_vocab_only(mut self, vocab_only: bool) -> Self {
+    pub const fn with_vocab_only(mut self, vocab_only: bool) -> Self {
         self.params.vocab_only = vocab_only;
         self
     }
 
     /// sets `use_mlock`
     #[must_use]
-    pub fn with_use_mlock(mut self, use_mlock: bool) -> Self {
+    pub const fn with_use_mlock(mut self, use_mlock: bool) -> Self {
         self.params.use_mlock = use_mlock;
         self
     }
@@ -323,11 +325,8 @@ impl LlamaModelParams {
             let backend_dev = unsafe { llama_cpp_bindings_sys::ggml_backend_dev_get(dev) };
             self.devices[i] = backend_dev;
         }
-        if self.devices.is_empty() {
-            self.params.devices = std::ptr::null_mut();
-        } else {
-            self.params.devices = self.devices.as_mut_ptr();
-        }
+        self.params.devices = self.devices.as_mut_ptr();
+
         Ok(self)
     }
 }
@@ -348,7 +347,7 @@ impl LlamaModelParams {
 impl Default for LlamaModelParams {
     fn default() -> Self {
         let default_params = unsafe { llama_cpp_bindings_sys::llama_model_default_params() };
-        LlamaModelParams {
+        Self {
             params: default_params,
             // push the next one to ensure we maintain the iterator invariant of ending with a 0
             kv_overrides: vec![llama_cpp_bindings_sys::llama_model_kv_override {
@@ -359,7 +358,7 @@ impl Default for LlamaModelParams {
                 },
             }],
             buft_overrides: vec![llama_cpp_bindings_sys::llama_model_tensor_buft_override {
-                pattern: std::ptr::null(),
+                pattern: null(),
                 buft: std::ptr::null_mut(),
             }],
             devices: Box::pin([std::ptr::null_mut(); 16]),
@@ -391,5 +390,226 @@ mod tests {
         let params = LlamaModelParams::default().with_n_gpu_layers(u32::MAX);
 
         assert_eq!(params.n_gpu_layers(), i32::MAX);
+    }
+
+    #[test]
+    fn with_n_gpu_layers_sets_value() {
+        let params = LlamaModelParams::default().with_n_gpu_layers(32);
+
+        assert_eq!(params.n_gpu_layers(), 32);
+    }
+
+    #[test]
+    fn with_main_gpu_sets_value() {
+        let params = LlamaModelParams::default().with_main_gpu(2);
+
+        assert_eq!(params.main_gpu(), 2);
+    }
+
+    #[test]
+    fn with_split_mode_none() {
+        let params = LlamaModelParams::default().with_split_mode(LlamaSplitMode::None);
+
+        assert_eq!(params.split_mode(), Ok(LlamaSplitMode::None));
+    }
+
+    #[test]
+    fn with_split_mode_row() {
+        let params = LlamaModelParams::default().with_split_mode(LlamaSplitMode::Row);
+
+        assert_eq!(params.split_mode(), Ok(LlamaSplitMode::Row));
+    }
+
+    #[test]
+    fn with_vocab_only_enables() {
+        let params = LlamaModelParams::default().with_vocab_only(true);
+
+        assert!(params.vocab_only());
+    }
+
+    #[test]
+    fn with_vocab_only_disables() {
+        let params = LlamaModelParams::default().with_vocab_only(false);
+
+        assert!(!params.vocab_only());
+    }
+
+    #[test]
+    fn with_use_mlock_enables() {
+        let params = LlamaModelParams::default().with_use_mlock(true);
+
+        assert!(params.use_mlock());
+    }
+
+    #[test]
+    fn with_use_mlock_disables() {
+        let params = LlamaModelParams::default().with_use_mlock(false);
+
+        assert!(!params.use_mlock());
+    }
+
+    #[test]
+    fn debug_format_contains_field_names() {
+        let params = LlamaModelParams::default();
+        let debug_output = format!("{params:?}");
+
+        assert!(debug_output.contains("n_gpu_layers"));
+        assert!(debug_output.contains("main_gpu"));
+        assert!(debug_output.contains("vocab_only"));
+        assert!(debug_output.contains("use_mmap"));
+        assert!(debug_output.contains("use_mlock"));
+        assert!(debug_output.contains("split_mode"));
+    }
+
+    #[test]
+    fn builder_chaining_preserves_all_values() {
+        let params = LlamaModelParams::default()
+            .with_n_gpu_layers(10)
+            .with_main_gpu(1)
+            .with_split_mode(LlamaSplitMode::Row)
+            .with_vocab_only(true)
+            .with_use_mlock(true);
+
+        assert_eq!(params.n_gpu_layers(), 10);
+        assert_eq!(params.main_gpu(), 1);
+        assert_eq!(params.split_mode(), Ok(LlamaSplitMode::Row));
+        assert!(params.vocab_only());
+        assert!(params.use_mlock());
+    }
+
+    #[test]
+    fn with_devices_empty_list_succeeds() {
+        let params = LlamaModelParams::default().with_devices(&[]);
+
+        assert!(params.is_ok());
+        assert!(params.unwrap().devices().is_empty());
+    }
+
+    #[test]
+    fn with_devices_invalid_index_returns_error() {
+        let result = LlamaModelParams::default().with_devices(&[999_999]);
+
+        assert_eq!(
+            result.unwrap_err(),
+            crate::LlamaCppError::BackendDeviceNotFound(999_999)
+        );
+    }
+
+    #[test]
+    fn add_cpu_buft_override_succeeds() {
+        let mut params = std::pin::pin!(LlamaModelParams::default());
+        let result = params.as_mut().add_cpu_buft_override(c"test_pattern");
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn add_cpu_buft_override_twice_fails_with_slot_not_empty() {
+        let mut params = std::pin::pin!(LlamaModelParams::default());
+        params
+            .as_mut()
+            .add_cpu_buft_override(c"first_pattern")
+            .unwrap();
+        let result = params.as_mut().add_cpu_buft_override(c"second_pattern");
+
+        assert_eq!(
+            result.unwrap_err(),
+            crate::error::ModelParamsError::SlotNotEmpty
+        );
+    }
+
+    #[test]
+    fn add_cpu_moe_override_succeeds() {
+        let mut params = std::pin::pin!(LlamaModelParams::default());
+        let result = params.as_mut().add_cpu_moe_override();
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn append_kv_override_twice_fails_with_slot_not_empty() {
+        use crate::model::params::param_override_value::ParamOverrideValue;
+        use std::ffi::CString;
+
+        let mut params = std::pin::pin!(LlamaModelParams::default());
+        let key = CString::new("first_key").unwrap();
+        params
+            .as_mut()
+            .append_kv_override(&key, ParamOverrideValue::Int(1))
+            .unwrap();
+
+        let key2 = CString::new("second_key").unwrap();
+        let result = params
+            .as_mut()
+            .append_kv_override(&key2, ParamOverrideValue::Int(2));
+
+        assert_eq!(
+            result.unwrap_err(),
+            crate::error::ModelParamsError::SlotNotEmpty
+        );
+    }
+
+    #[test]
+    fn with_devices_too_many_returns_max_exceeded() {
+        let too_many: Vec<usize> = (0..17).collect();
+        let result = LlamaModelParams::default().with_devices(&too_many);
+
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Max devices exceeded")
+        );
+    }
+
+    #[test]
+    fn with_devices_sets_devices_when_available() {
+        let dev_count = unsafe { llama_cpp_bindings_sys::ggml_backend_dev_count() };
+        assert!(dev_count > 0, "Test requires at least one backend device");
+
+        let params = LlamaModelParams::default().with_devices(&[0]).unwrap();
+
+        assert_eq!(params.devices().len(), 1);
+        assert_eq!(params.devices()[0], 0);
+    }
+
+    #[test]
+    fn with_devices_invalid_index_returns_not_found() {
+        let invalid_index = usize::MAX;
+        let result = LlamaModelParams::default().with_devices(&[invalid_index]);
+
+        assert!(result.unwrap_err().to_string().contains("Backend device"));
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn append_kv_override_with_high_byte_returns_invalid_character_error() {
+        use crate::model::params::param_override_value::ParamOverrideValue;
+
+        let key_bytes: &[u8] = b"\xff\0";
+        let key = std::ffi::CStr::from_bytes_with_nul(key_bytes).unwrap();
+        let mut params = std::pin::pin!(LlamaModelParams::default());
+        let result = params
+            .as_mut()
+            .append_kv_override(key, ParamOverrideValue::Int(1));
+
+        assert!(matches!(
+            result,
+            Err(crate::error::ModelParamsError::InvalidCharacterInKey { byte: 0xff, .. })
+        ));
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn add_cpu_buft_override_with_high_byte_returns_invalid_character_error() {
+        let key_bytes: &[u8] = b"\xff\0";
+        let key = std::ffi::CStr::from_bytes_with_nul(key_bytes).unwrap();
+        let mut params = std::pin::pin!(LlamaModelParams::default());
+        let result = params.as_mut().add_cpu_buft_override(key);
+
+        assert!(matches!(
+            result,
+            Err(crate::error::ModelParamsError::InvalidCharacterInKey { byte: 0xff, .. })
+        ));
     }
 }

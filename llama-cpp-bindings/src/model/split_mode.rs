@@ -10,8 +10,12 @@ pub enum LlamaSplitMode {
     Row = LLAMA_SPLIT_MODE_ROW,
 }
 
+// These constants are known small u32 values from the C API that safely fit in i8.
+#[allow(clippy::cast_possible_truncation)]
 const LLAMA_SPLIT_MODE_NONE: i8 = llama_cpp_bindings_sys::LLAMA_SPLIT_MODE_NONE as i8;
+#[allow(clippy::cast_possible_truncation)]
 const LLAMA_SPLIT_MODE_LAYER: i8 = llama_cpp_bindings_sys::LLAMA_SPLIT_MODE_LAYER as i8;
+#[allow(clippy::cast_possible_truncation)]
 const LLAMA_SPLIT_MODE_ROW: i8 = llama_cpp_bindings_sys::LLAMA_SPLIT_MODE_ROW as i8;
 
 /// An error that occurs when unknown split mode is encountered.
@@ -93,9 +97,9 @@ impl From<LlamaSplitMode> for i32 {
 impl From<LlamaSplitMode> for u32 {
     fn from(value: LlamaSplitMode) -> Self {
         match value {
-            LlamaSplitMode::None => LLAMA_SPLIT_MODE_NONE as u32,
-            LlamaSplitMode::Layer => LLAMA_SPLIT_MODE_LAYER as u32,
-            LlamaSplitMode::Row => LLAMA_SPLIT_MODE_ROW as u32,
+            LlamaSplitMode::None => LLAMA_SPLIT_MODE_NONE as Self,
+            LlamaSplitMode::Layer => LLAMA_SPLIT_MODE_LAYER as Self,
+            LlamaSplitMode::Row => LLAMA_SPLIT_MODE_ROW as Self,
         }
     }
 }
@@ -103,13 +107,15 @@ impl From<LlamaSplitMode> for u32 {
 /// The default split mode is `Layer` in llama.cpp.
 impl Default for LlamaSplitMode {
     fn default() -> Self {
-        LlamaSplitMode::Layer
+        Self::Layer
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::LlamaSplitMode;
+    use super::{
+        LLAMA_SPLIT_MODE_LAYER, LLAMA_SPLIT_MODE_NONE, LLAMA_SPLIT_MODE_ROW, LlamaSplitMode,
+    };
 
     #[test]
     fn try_from_i32_invalid() {
@@ -123,5 +129,84 @@ mod tests {
     #[test]
     fn try_from_u32_invalid() {
         assert!(LlamaSplitMode::try_from(99_u32).is_err());
+    }
+
+    #[test]
+    fn try_from_i32_none_roundtrip() {
+        let mode = LlamaSplitMode::try_from(i32::from(LLAMA_SPLIT_MODE_NONE)).unwrap();
+
+        assert_eq!(mode, LlamaSplitMode::None);
+        assert_eq!(i32::from(mode), i32::from(LLAMA_SPLIT_MODE_NONE));
+    }
+
+    #[test]
+    fn try_from_i32_layer_roundtrip() {
+        let mode = LlamaSplitMode::try_from(i32::from(LLAMA_SPLIT_MODE_LAYER)).unwrap();
+
+        assert_eq!(mode, LlamaSplitMode::Layer);
+        assert_eq!(i32::from(mode), i32::from(LLAMA_SPLIT_MODE_LAYER));
+    }
+
+    #[test]
+    fn try_from_i32_row_roundtrip() {
+        let mode = LlamaSplitMode::try_from(i32::from(LLAMA_SPLIT_MODE_ROW)).unwrap();
+
+        assert_eq!(mode, LlamaSplitMode::Row);
+        assert_eq!(i32::from(mode), i32::from(LLAMA_SPLIT_MODE_ROW));
+    }
+
+    #[test]
+    fn try_from_u32_none_roundtrip() {
+        let mode = LlamaSplitMode::try_from(LLAMA_SPLIT_MODE_NONE as u32).unwrap();
+
+        assert_eq!(mode, LlamaSplitMode::None);
+        assert_eq!(u32::from(mode), LLAMA_SPLIT_MODE_NONE as u32);
+    }
+
+    #[test]
+    fn try_from_u32_layer_roundtrip() {
+        let mode = LlamaSplitMode::try_from(LLAMA_SPLIT_MODE_LAYER as u32).unwrap();
+
+        assert_eq!(mode, LlamaSplitMode::Layer);
+        assert_eq!(u32::from(mode), LLAMA_SPLIT_MODE_LAYER as u32);
+    }
+
+    #[test]
+    fn try_from_u32_row_roundtrip() {
+        let mode = LlamaSplitMode::try_from(LLAMA_SPLIT_MODE_ROW as u32).unwrap();
+
+        assert_eq!(mode, LlamaSplitMode::Row);
+        assert_eq!(u32::from(mode), LLAMA_SPLIT_MODE_ROW as u32);
+    }
+
+    #[test]
+    fn default_is_layer() {
+        assert_eq!(LlamaSplitMode::default(), LlamaSplitMode::Layer);
+    }
+
+    #[test]
+    fn try_from_i32_overflow_returns_error() {
+        let result = LlamaSplitMode::try_from(i32::MAX);
+
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .context
+                .contains("i32 to i8 conversion failed")
+        );
+    }
+
+    #[test]
+    fn try_from_u32_overflow_returns_error() {
+        let result = LlamaSplitMode::try_from(u32::MAX);
+
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .context
+                .contains("u32 to i8 conversion failed")
+        );
     }
 }

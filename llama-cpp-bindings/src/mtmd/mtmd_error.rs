@@ -18,6 +18,9 @@ pub enum MtmdBitmapError {
     /// Invalid data size for bitmap
     #[error("Invalid data size for bitmap")]
     InvalidDataSize,
+    /// Image dimensions too small for processing (minimum 2x2)
+    #[error("Image dimensions too small: {0}x{1} (minimum 2x2)")]
+    ImageDimensionsTooSmall(u32, u32),
     /// Bitmap creation returned null
     #[error("Bitmap creation returned null")]
     NullResult,
@@ -67,6 +70,14 @@ pub enum MtmdEncodeError {
 /// Errors that can occur during evaluation
 #[derive(thiserror::Error, Debug)]
 pub enum MtmdEvalError {
+    /// Requested batch size exceeds the context's maximum batch size
+    #[error("batch size {requested} exceeds context batch size {context_max}")]
+    BatchSizeExceedsContextLimit {
+        /// The batch size requested in eval_chunks
+        requested: i32,
+        /// The maximum batch size configured on the context
+        context_max: u32,
+    },
     /// Evaluation operation failed
     #[error("Eval failed with code: {0}")]
     EvalFailure(i32),

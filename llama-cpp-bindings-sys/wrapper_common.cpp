@@ -66,7 +66,7 @@ extern "C" void llama_rs_chat_template_result_free(struct llama_rs_chat_template
     result->grammar = nullptr;
     result->parser = nullptr;
     result->chat_format = 0;
-    result->thinking_forced_open = false;
+    result->supports_thinking = false;
     result->grammar_lazy = false;
     result->grammar_triggers = nullptr;
     result->grammar_triggers_count = 0;
@@ -148,6 +148,87 @@ extern "C" struct llama_sampler * llama_rs_sampler_init_grammar_lazy_patterns(
     } catch (...) {
         return nullptr;
     }
+}
+
+extern "C" llama_pos llama_rs_memory_seq_pos_max(
+    struct llama_context * ctx,
+    llama_seq_id seq_id) {
+    if (!ctx) {
+        return -1;
+    }
+    auto * mem = llama_get_memory(ctx);
+    if (!mem) {
+        return -1;
+    }
+    uint32_t n_seq_max = llama_n_seq_max(ctx);
+    if (seq_id < 0 || (uint32_t) seq_id >= n_seq_max) {
+        return -1;
+    }
+    return llama_memory_seq_pos_max(mem, seq_id);
+}
+
+extern "C" llama_rs_status llama_rs_encode(
+    struct llama_context * ctx,
+    struct llama_batch batch) {
+    if (!ctx) {
+        return LLAMA_RS_STATUS_INVALID_ARGUMENT;
+    }
+    const auto * model = llama_get_model(ctx);
+    if (!llama_model_has_encoder(model)) {
+        return LLAMA_RS_STATUS_INVALID_ARGUMENT;
+    }
+    int32_t result = llama_encode(ctx, batch);
+    if (result != 0) {
+        return LLAMA_RS_STATUS_EXCEPTION;
+    }
+
+    return LLAMA_RS_STATUS_OK;
+}
+
+extern "C" llama_rs_status llama_rs_memory_seq_add(
+    struct llama_context * ctx,
+    llama_seq_id seq_id,
+    llama_pos p0,
+    llama_pos p1,
+    llama_pos shift) {
+    if (!ctx) {
+        return LLAMA_RS_STATUS_INVALID_ARGUMENT;
+    }
+    const auto * model = llama_get_model(ctx);
+    const auto rope = llama_model_rope_type(model);
+    if (rope == LLAMA_ROPE_TYPE_MROPE || rope == LLAMA_ROPE_TYPE_VISION || rope == LLAMA_ROPE_TYPE_IMROPE) {
+        return LLAMA_RS_STATUS_INVALID_ARGUMENT;
+    }
+    auto * mem = llama_get_memory(ctx);
+    if (!mem) {
+        return LLAMA_RS_STATUS_INVALID_ARGUMENT;
+    }
+    llama_memory_seq_add(mem, seq_id, p0, p1, shift);
+
+    return LLAMA_RS_STATUS_OK;
+}
+
+extern "C" llama_rs_status llama_rs_memory_seq_div(
+    struct llama_context * ctx,
+    llama_seq_id seq_id,
+    llama_pos p0,
+    llama_pos p1,
+    int d) {
+    if (!ctx) {
+        return LLAMA_RS_STATUS_INVALID_ARGUMENT;
+    }
+    const auto * model = llama_get_model(ctx);
+    const auto rope = llama_model_rope_type(model);
+    if (rope == LLAMA_ROPE_TYPE_MROPE || rope == LLAMA_ROPE_TYPE_VISION || rope == LLAMA_ROPE_TYPE_IMROPE) {
+        return LLAMA_RS_STATUS_INVALID_ARGUMENT;
+    }
+    auto * mem = llama_get_memory(ctx);
+    if (!mem) {
+        return LLAMA_RS_STATUS_INVALID_ARGUMENT;
+    }
+    llama_memory_seq_div(mem, seq_id, p0, p1, d);
+
+    return LLAMA_RS_STATUS_OK;
 }
 
 extern "C" llama_rs_status llama_rs_sampler_accept(struct llama_sampler * sampler, llama_token token) {

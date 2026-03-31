@@ -33,7 +33,7 @@ impl LlamaTokenDataArray {
     /// assert_eq!(array.sorted, false);
     /// ```
     #[must_use]
-    pub fn new(data: Vec<LlamaTokenData>, sorted: bool) -> Self {
+    pub const fn new(data: Vec<LlamaTokenData>, sorted: bool) -> Self {
         Self {
             data,
             selected: None,
@@ -52,7 +52,7 @@ impl LlamaTokenDataArray {
     /// ], false);
     /// assert_eq!(array.data.len(), 2);
     /// assert_eq!(array.sorted, false);
-    pub fn from_iter<TIterator>(data: TIterator, sorted: bool) -> LlamaTokenDataArray
+    pub fn from_iter<TIterator>(data: TIterator, sorted: bool) -> Self
     where
         TIterator: IntoIterator<Item = LlamaTokenData>,
     {
@@ -99,10 +99,7 @@ impl LlamaTokenDataArray {
 
         let result = modify(&mut c_llama_token_data_array);
 
-        assert!(
-            c_llama_token_data_array.size <= self.data.capacity(),
-            "Size of the returned array exceeds the data buffer's capacity!"
-        );
+        assert!(c_llama_token_data_array.size <= self.data.capacity());
         // SAFETY: caller guarantees the returned data and size are valid.
         unsafe {
             if !ptr::eq(c_llama_token_data_array.data, data) {
@@ -221,5 +218,112 @@ mod tests {
             .expect("test: greedy sampler should select a token");
 
         assert_eq!(token, LlamaToken::new(20));
+    }
+
+    #[test]
+    fn from_iter_creates_array_from_iterator() {
+        let array = LlamaTokenDataArray::from_iter(
+            [
+                LlamaTokenData::new(LlamaToken::new(0), 0.0, 0.0),
+                LlamaTokenData::new(LlamaToken::new(1), 1.0, 0.0),
+                LlamaTokenData::new(LlamaToken::new(2), 2.0, 0.0),
+            ],
+            false,
+        );
+
+        assert_eq!(array.data.len(), 3);
+        assert!(!array.sorted);
+        assert!(array.selected.is_none());
+    }
+
+    #[test]
+    fn sample_token_with_seed_selects_a_token() {
+        let mut array = LlamaTokenDataArray::new(
+            vec![
+                LlamaTokenData::new(LlamaToken::new(10), 1.0, 0.0),
+                LlamaTokenData::new(LlamaToken::new(20), 1.0, 0.0),
+            ],
+            false,
+        );
+
+        let token = array
+            .sample_token(42)
+            .expect("test: dist sampler should select a token");
+
+        assert!(token == LlamaToken::new(10) || token == LlamaToken::new(20));
+    }
+
+    #[test]
+    fn selected_token_returns_none_when_no_selection() {
+        let array = LlamaTokenDataArray::new(
+            vec![LlamaTokenData::new(LlamaToken::new(0), 1.0, 0.0)],
+            false,
+        );
+
+        assert!(array.selected_token().is_none());
+    }
+
+    #[test]
+    fn selected_token_returns_none_when_index_out_of_bounds() {
+        let array = LlamaTokenDataArray {
+            data: vec![LlamaTokenData::new(LlamaToken::new(0), 1.0, 0.0)],
+            selected: Some(5),
+            sorted: false,
+        };
+
+        assert!(array.selected_token().is_none());
+    }
+
+    #[test]
+    fn modify_as_c_llama_token_data_array_copies_when_data_pointer_changes() {
+        let mut array = LlamaTokenDataArray::new(
+            vec![
+                LlamaTokenData::new(LlamaToken::new(0), 1.0, 0.0),
+                LlamaTokenData::new(LlamaToken::new(1), 2.0, 0.0),
+                LlamaTokenData::new(LlamaToken::new(2), 3.0, 0.0),
+            ],
+            false,
+        );
+
+        let replacement = [
+            llama_cpp_bindings_sys::llama_token_data {
+                id: 10,
+                logit: 5.0,
+                p: 0.0,
+            },
+            llama_cpp_bindings_sys::llama_token_data {
+                id: 20,
+                logit: 6.0,
+                p: 0.0,
+            },
+        ];
+
+        unsafe {
+            array.modify_as_c_llama_token_data_array(|c_array| {
+                c_array.data = replacement.as_ptr().cast_mut();
+                c_array.size = replacement.len();
+                c_array.selected = 0;
+            });
+        }
+
+        assert_eq!(array.data.len(), 2);
+        assert_eq!(array.data[0].id(), LlamaToken::new(10));
+        assert_eq!(array.data[1].id(), LlamaToken::new(20));
+        assert_eq!(array.selected, Some(0));
+    }
+
+    #[test]
+    fn selected_overflow_uses_negative_one() {
+        let mut array = LlamaTokenDataArray {
+            data: vec![LlamaTokenData::new(LlamaToken::new(0), 1.0, 0.0)],
+            selected: Some(usize::MAX),
+            sorted: false,
+        };
+
+        unsafe {
+            array.modify_as_c_llama_token_data_array(|c_array| {
+                assert_eq!(c_array.selected, -1);
+            });
+        }
     }
 }

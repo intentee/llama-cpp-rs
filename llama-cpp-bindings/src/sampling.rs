@@ -11,6 +11,38 @@ use crate::token::data_array::LlamaTokenDataArray;
 use crate::token::logit_bias::LlamaLogitBias;
 use crate::{GrammarError, SamplerAcceptError, SamplingError, status_is_ok, status_to_i32};
 
+const fn check_sampler_accept_status(
+    status: llama_cpp_bindings_sys::llama_rs_status,
+) -> Result<(), SamplerAcceptError> {
+    if status_is_ok(status) {
+        Ok(())
+    } else {
+        Err(SamplerAcceptError::FfiError(status_to_i32(status)))
+    }
+}
+
+const fn check_sampler_not_null(
+    sampler: *mut llama_cpp_bindings_sys::llama_sampler,
+) -> Result<LlamaSampler, GrammarError> {
+    if sampler.is_null() {
+        Err(GrammarError::NullGrammar)
+    } else {
+        Ok(LlamaSampler { sampler })
+    }
+}
+
+fn checked_u32_as_i32(value: u32) -> Result<i32, GrammarError> {
+    i32::try_from(value).map_err(|convert_error| {
+        GrammarError::IntegerOverflow(format!("value exceeds i32::MAX: {convert_error}"))
+    })
+}
+
+fn checked_usize_as_i32_sampling(value: usize) -> Result<i32, SamplingError> {
+    i32::try_from(value).map_err(|convert_error| {
+        SamplingError::IntegerOverflow(format!("value exceeds i32::MAX: {convert_error}"))
+    })
+}
+
 /// A safe wrapper around `llama_sampler`.
 pub struct LlamaSampler {
     /// Raw pointer to the underlying `llama_sampler`.
@@ -85,11 +117,8 @@ impl LlamaSampler {
     pub fn try_accept(&mut self, token: LlamaToken) -> Result<(), SamplerAcceptError> {
         let sampler_result =
             unsafe { llama_cpp_bindings_sys::llama_rs_sampler_accept(self.sampler, token.0) };
-        if status_is_ok(sampler_result) {
-            Ok(())
-        } else {
-            Err(SamplerAcceptError::FfiError(status_to_i32(sampler_result)))
-        }
+
+        check_sampler_accept_status(sampler_result)
     }
 
     /// Resets the internal state of the sampler.
@@ -324,11 +353,7 @@ impl LlamaSampler {
             )
         };
 
-        if sampler.is_null() {
-            Err(GrammarError::NullGrammar)
-        } else {
-            Ok(Self { sampler })
-        }
+        check_sampler_not_null(sampler)
     }
 
     /// Lazy grammar sampler, introduced in <https://github.com/ggerganov/llama.cpp/pull/9639>
@@ -363,11 +388,7 @@ impl LlamaSampler {
             )
         };
 
-        if sampler.is_null() {
-            Err(GrammarError::NullGrammar)
-        } else {
-            Ok(Self { sampler })
-        }
+        check_sampler_not_null(sampler)
     }
 
     /// Lazy grammar sampler using regex trigger patterns.
@@ -404,11 +425,7 @@ impl LlamaSampler {
             )
         };
 
-        if sampler.is_null() {
-            Err(GrammarError::NullGrammar)
-        } else {
-            Ok(Self { sampler })
-        }
+        check_sampler_not_null(sampler)
     }
 
     /// `LLGuidance` sampler for constrained decoding.
@@ -436,40 +453,28 @@ impl LlamaSampler {
             return Err(GrammarError::RootNotFound);
         }
 
-        if grammar_str.contains('\0') || grammar_root.contains('\0') {
-            return Err(GrammarError::GrammarNullBytes);
-        }
+        let grammar = CString::new(grammar_str).map_err(GrammarError::GrammarNullBytes)?;
+        let root = CString::new(grammar_root).map_err(GrammarError::GrammarNullBytes)?;
 
-        Ok((CString::new(grammar_str)?, CString::new(grammar_root)?))
+        Ok((grammar, root))
     }
 
     fn sanitize_trigger_words(
         trigger_words: impl IntoIterator<Item = impl AsRef<[u8]>>,
     ) -> Result<Vec<CString>, GrammarError> {
-        let trigger_words: Vec<_> = trigger_words.into_iter().collect();
-        if trigger_words
-            .iter()
-            .any(|word| word.as_ref().contains(&b'\0'))
-        {
-            return Err(GrammarError::TriggerWordNullBytes);
-        }
         trigger_words
             .into_iter()
-            .map(|word| Ok(CString::new(word.as_ref())?))
+            .map(|word| CString::new(word.as_ref()).map_err(GrammarError::TriggerWordNullBytes))
             .collect()
     }
 
     fn sanitize_trigger_patterns(
         trigger_patterns: &[String],
     ) -> Result<Vec<CString>, GrammarError> {
-        let mut patterns = Vec::with_capacity(trigger_patterns.len());
-        for pattern in trigger_patterns {
-            if pattern.contains('\0') {
-                return Err(GrammarError::GrammarNullBytes);
-            }
-            patterns.push(CString::new(pattern.as_str())?);
-        }
-        Ok(patterns)
+        trigger_patterns
+            .iter()
+            .map(|pattern| CString::new(pattern.as_str()).map_err(GrammarError::GrammarNullBytes))
+            .collect()
     }
 
     /// DRY sampler, designed by p-e-w, as described in:
@@ -494,9 +499,7 @@ impl LlamaSampler {
         let mut seq_breaker_pointers: Vec<*const c_char> =
             seq_breakers.iter().map(|s| s.as_ptr()).collect();
 
-        let n_ctx_train = model.n_ctx_train().try_into().map_err(|convert_error| {
-            GrammarError::IntegerOverflow(format!("n_ctx_train exceeds i32::MAX: {convert_error}"))
-        })?;
+        let n_ctx_train = checked_u32_as_i32(model.n_ctx_train())?;
         let sampler = unsafe {
             llama_cpp_bindings_sys::llama_sampler_init_dry(
                 model.vocab_ptr(),
@@ -635,9 +638,7 @@ impl LlamaSampler {
     /// let sampler = LlamaSampler::logit_bias(32000, &biases).unwrap();
     /// ```
     pub fn logit_bias(n_vocab: i32, biases: &[LlamaLogitBias]) -> Result<Self, SamplingError> {
-        let bias_count = i32::try_from(biases.len()).map_err(|convert_error| {
-            SamplingError::IntegerOverflow(format!("bias count exceeds i32::MAX: {convert_error}"))
-        })?;
+        let bias_count = checked_usize_as_i32_sampling(biases.len())?;
         let data = biases
             .as_ptr()
             .cast::<llama_cpp_bindings_sys::llama_logit_bias>();
@@ -681,14 +682,20 @@ mod tests {
     fn sanitize_grammar_strings_null_byte_in_grammar() {
         let result = LlamaSampler::sanitize_grammar_strings("root ::= \"\0\"", "root");
 
-        assert_eq!(result.err(), Some(GrammarError::GrammarNullBytes));
+        assert!(matches!(
+            result.err(),
+            Some(GrammarError::GrammarNullBytes(_))
+        ));
     }
 
     #[test]
     fn sanitize_grammar_strings_null_byte_in_root() {
         let result = LlamaSampler::sanitize_grammar_strings("ro\0ot ::= \"hello\"", "ro\0ot");
 
-        assert_eq!(result.err(), Some(GrammarError::GrammarNullBytes));
+        assert!(matches!(
+            result.err(),
+            Some(GrammarError::GrammarNullBytes(_))
+        ));
     }
 
     #[test]
@@ -714,7 +721,10 @@ mod tests {
         let words: Vec<&[u8]> = vec![b"hel\0lo"];
         let result = LlamaSampler::sanitize_trigger_words(words);
 
-        assert_eq!(result.err(), Some(GrammarError::TriggerWordNullBytes));
+        assert!(matches!(
+            result.err(),
+            Some(GrammarError::TriggerWordNullBytes(_))
+        ));
     }
 
     #[test]
@@ -740,7 +750,10 @@ mod tests {
         let patterns = vec!["hel\0lo".to_string()];
         let result = LlamaSampler::sanitize_trigger_patterns(&patterns);
 
-        assert_eq!(result.err(), Some(GrammarError::GrammarNullBytes));
+        assert!(matches!(
+            result.err(),
+            Some(GrammarError::GrammarNullBytes(_))
+        ));
     }
 
     #[test]
@@ -811,5 +824,147 @@ mod tests {
         ])
         .with_tokens([LlamaToken::new(10), LlamaToken::new(20)])
         .expect("test: with_tokens should succeed");
+    }
+
+    #[test]
+    fn all_sampler_constructors() {
+        use crate::token::LlamaToken;
+        use crate::token::logit_bias::LlamaLogitBias;
+
+        let _temp = LlamaSampler::temp(0.8);
+        let _temp_ext = LlamaSampler::temp_ext(0.8, 0.1, 1.0);
+        let _top_k = LlamaSampler::top_k(40);
+        let _top_n_sigma = LlamaSampler::top_n_sigma(2.0);
+        let _top_p = LlamaSampler::top_p(0.9, 1);
+        let _min_p = LlamaSampler::min_p(0.05, 1);
+        let _typical = LlamaSampler::typical(0.9, 1);
+        let _xtc = LlamaSampler::xtc(0.1, 0.5, 1, 42);
+        let _dist = LlamaSampler::dist(42);
+        let _mirostat = LlamaSampler::mirostat(32000, 42, 5.0, 0.1, 100);
+        let _mirostat_v2 = LlamaSampler::mirostat_v2(42, 5.0, 0.1);
+        let biases = vec![LlamaLogitBias::new(LlamaToken::new(0), -100.0)];
+        let _logit_bias = LlamaSampler::logit_bias(32000, &biases);
+        let _chain = LlamaSampler::chain([LlamaSampler::greedy()], true);
+    }
+
+    #[test]
+    fn reset_and_get_seed() {
+        let mut sampler = LlamaSampler::dist(42);
+        sampler.reset();
+        let _seed = sampler.get_seed();
+    }
+
+    #[test]
+    fn debug_formatting() {
+        let sampler = LlamaSampler::greedy();
+        let debug_output = format!("{sampler:?}");
+        assert!(debug_output.contains("LlamaSampler"));
+    }
+
+    #[cfg(feature = "tests_that_use_llms")]
+    #[test]
+    #[serial_test::serial]
+    fn dry_sampler_with_model() {
+        let (_backend, model) = crate::test_model::load_default_model().unwrap();
+        let breakers: Vec<&[u8]> = vec![b"\n", b"\t"];
+        let _sampler = LlamaSampler::dry(&model, 1.5, 2.0, 128, 2, &breakers);
+    }
+
+    #[cfg(feature = "tests_that_use_llms")]
+    #[test]
+    #[serial_test::serial]
+    fn dry_sampler_with_null_byte_in_seq_breakers_returns_error() {
+        let (_backend, model) = crate::test_model::load_default_model().unwrap();
+        let breakers: Vec<&[u8]> = vec![b"hello\0world"];
+        let result = LlamaSampler::dry(&model, 1.5, 2.0, 128, 2, breakers);
+
+        assert!(result.is_err());
+    }
+
+    #[cfg(feature = "tests_that_use_llms")]
+    #[test]
+    #[serial_test::serial]
+    fn grammar_returns_sampler_for_valid_grammar() {
+        let (_backend, model) = crate::test_model::load_default_model().unwrap();
+        let sampler = LlamaSampler::grammar(&model, "root ::= \"hello\"", "root");
+
+        assert!(sampler.is_ok());
+    }
+
+    #[cfg(feature = "tests_that_use_llms")]
+    #[test]
+    #[serial_test::serial]
+    fn grammar_lazy_returns_sampler_for_valid_grammar_with_triggers() {
+        let (_backend, model) = crate::test_model::load_default_model().unwrap();
+        let trigger_words: Vec<&[u8]> = vec![b"function"];
+        let sampler =
+            LlamaSampler::grammar_lazy(&model, "root ::= \"hello\"", "root", trigger_words, &[]);
+
+        assert!(sampler.is_ok());
+    }
+
+    #[cfg(feature = "tests_that_use_llms")]
+    #[test]
+    #[serial_test::serial]
+    fn grammar_lazy_patterns_returns_sampler_for_valid_grammar_with_patterns() {
+        let (_backend, model) = crate::test_model::load_default_model().unwrap();
+        let patterns = vec!["\\{.*".to_string()];
+        let sampler = LlamaSampler::grammar_lazy_patterns(
+            &model,
+            "root ::= \"hello\"",
+            "root",
+            &patterns,
+            &[],
+        );
+
+        assert!(sampler.is_ok());
+    }
+
+    #[cfg(feature = "tests_that_use_llms")]
+    #[test]
+    #[serial_test::serial]
+    fn sample_returns_token_after_decode() {
+        use crate::context::params::LlamaContextParams;
+        use crate::llama_batch::LlamaBatch;
+        use crate::model::AddBos;
+        use crate::token::LlamaToken;
+
+        let (backend, model) = crate::test_model::load_default_model().unwrap();
+        let ctx_params = LlamaContextParams::default().with_n_ctx(std::num::NonZeroU32::new(512));
+        let mut context = model.new_context(&backend, ctx_params).unwrap();
+        let tokens = model.str_to_token("Hello", AddBos::Always).unwrap();
+        let mut batch = LlamaBatch::new(512, 1).unwrap();
+        batch.add_sequence(&tokens, 0, false).unwrap();
+        context.decode(&mut batch).unwrap();
+        let mut sampler =
+            LlamaSampler::chain_simple([LlamaSampler::temp(0.8), LlamaSampler::greedy()]);
+        let token = sampler.sample(&context, batch.n_tokens() - 1);
+
+        assert_ne!(token, LlamaToken::new(-1));
+    }
+
+    #[test]
+    fn checked_u32_as_i32_overflow() {
+        let result = super::checked_u32_as_i32(u32::MAX);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn checked_usize_as_i32_sampling_overflow() {
+        let result = super::checked_usize_as_i32_sampling(usize::MAX);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn check_sampler_accept_status_error() {
+        let result =
+            super::check_sampler_accept_status(llama_cpp_bindings_sys::LLAMA_RS_STATUS_EXCEPTION);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn check_sampler_not_null_returns_error() {
+        let result = super::check_sampler_not_null(std::ptr::null_mut());
+        assert!(result.is_err());
     }
 }

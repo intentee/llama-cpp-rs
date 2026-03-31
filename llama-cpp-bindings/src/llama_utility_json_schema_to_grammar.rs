@@ -30,6 +30,7 @@ pub fn json_schema_to_grammar(schema_json: &str) -> Result<String> {
         let grammar_bytes = unsafe { CStr::from_ptr(out) }.to_bytes().to_vec();
         let grammar = String::from_utf8(grammar_bytes)
             .map_err(|err| LlamaCppError::JsonSchemaToGrammarError(err.to_string()))?;
+
         Ok(grammar)
     };
 
@@ -45,10 +46,9 @@ mod tests {
     #[test]
     fn simple_object() {
         let schema = r#"{"type": "object", "properties": {"name": {"type": "string"}}}"#;
-        let result = json_schema_to_grammar(schema);
+        let grammar = json_schema_to_grammar(schema).unwrap();
 
-        assert!(result.is_ok(), "expected valid grammar, got {result:?}");
-        assert!(!result.unwrap().is_empty());
+        assert!(!grammar.is_empty());
     }
 
     #[test]
@@ -62,8 +62,16 @@ mod tests {
     #[test]
     fn simple_string() {
         let schema = r#"{"type": "string"}"#;
+        let grammar = json_schema_to_grammar(schema).unwrap();
+
+        assert!(!grammar.is_empty());
+    }
+
+    #[test]
+    fn invalid_json_returns_ffi_error() {
+        let schema = "not valid json at all";
         let result = json_schema_to_grammar(schema);
 
-        assert!(result.is_ok(), "expected valid grammar, got {result:?}");
+        assert!(result.is_err());
     }
 }

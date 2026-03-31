@@ -175,39 +175,39 @@ impl From<KvCacheType> for llama_cpp_bindings_sys::ggml_type {
 impl From<llama_cpp_bindings_sys::ggml_type> for KvCacheType {
     fn from(value: llama_cpp_bindings_sys::ggml_type) -> Self {
         match value {
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_F32 => KvCacheType::F32,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_F16 => KvCacheType::F16,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q4_0 => KvCacheType::Q4_0,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q4_1 => KvCacheType::Q4_1,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q5_0 => KvCacheType::Q5_0,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q5_1 => KvCacheType::Q5_1,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q8_0 => KvCacheType::Q8_0,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q8_1 => KvCacheType::Q8_1,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q2_K => KvCacheType::Q2_K,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q3_K => KvCacheType::Q3_K,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q4_K => KvCacheType::Q4_K,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q5_K => KvCacheType::Q5_K,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q6_K => KvCacheType::Q6_K,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q8_K => KvCacheType::Q8_K,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_IQ2_XXS => KvCacheType::IQ2_XXS,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_IQ2_XS => KvCacheType::IQ2_XS,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_IQ3_XXS => KvCacheType::IQ3_XXS,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_IQ1_S => KvCacheType::IQ1_S,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_IQ4_NL => KvCacheType::IQ4_NL,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_IQ3_S => KvCacheType::IQ3_S,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_IQ2_S => KvCacheType::IQ2_S,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_IQ4_XS => KvCacheType::IQ4_XS,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_I8 => KvCacheType::I8,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_I16 => KvCacheType::I16,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_I32 => KvCacheType::I32,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_I64 => KvCacheType::I64,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_F64 => KvCacheType::F64,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_IQ1_M => KvCacheType::IQ1_M,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_BF16 => KvCacheType::BF16,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_TQ1_0 => KvCacheType::TQ1_0,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_TQ2_0 => KvCacheType::TQ2_0,
-            x if x == llama_cpp_bindings_sys::GGML_TYPE_MXFP4 => KvCacheType::MXFP4,
-            _ => KvCacheType::Unknown(value),
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_F32 => Self::F32,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_F16 => Self::F16,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q4_0 => Self::Q4_0,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q4_1 => Self::Q4_1,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q5_0 => Self::Q5_0,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q5_1 => Self::Q5_1,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q8_0 => Self::Q8_0,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q8_1 => Self::Q8_1,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q2_K => Self::Q2_K,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q3_K => Self::Q3_K,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q4_K => Self::Q4_K,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q5_K => Self::Q5_K,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q6_K => Self::Q6_K,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_Q8_K => Self::Q8_K,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_IQ2_XXS => Self::IQ2_XXS,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_IQ2_XS => Self::IQ2_XS,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_IQ3_XXS => Self::IQ3_XXS,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_IQ1_S => Self::IQ1_S,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_IQ4_NL => Self::IQ4_NL,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_IQ3_S => Self::IQ3_S,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_IQ2_S => Self::IQ2_S,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_IQ4_XS => Self::IQ4_XS,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_I8 => Self::I8,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_I16 => Self::I16,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_I32 => Self::I32,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_I64 => Self::I64,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_F64 => Self::F64,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_IQ1_M => Self::IQ1_M,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_BF16 => Self::BF16,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_TQ1_0 => Self::TQ1_0,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_TQ2_0 => Self::TQ2_0,
+            x if x == llama_cpp_bindings_sys::GGML_TYPE_MXFP4 => Self::MXFP4,
+            _ => Self::Unknown(value),
         }
     }
 }
@@ -255,7 +255,7 @@ impl LlamaContextParams {
     /// ```
     #[must_use]
     pub fn with_n_ctx(mut self, n_ctx: Option<NonZeroU32>) -> Self {
-        self.context_params.n_ctx = n_ctx.map_or(0, std::num::NonZeroU32::get);
+        self.context_params.n_ctx = n_ctx.map_or(0, NonZeroU32::get);
         self
     }
 
@@ -269,7 +269,7 @@ impl LlamaContextParams {
     /// let params = llama_cpp_bindings::context::params::LlamaContextParams::default();
     /// assert_eq!(params.n_ctx(), std::num::NonZeroU32::new(512));
     #[must_use]
-    pub fn n_ctx(&self) -> Option<NonZeroU32> {
+    pub const fn n_ctx(&self) -> Option<NonZeroU32> {
         NonZeroU32::new(self.context_params.n_ctx)
     }
 
@@ -285,7 +285,7 @@ impl LlamaContextParams {
     /// assert_eq!(params.n_batch(), 2048);
     /// ```
     #[must_use]
-    pub fn with_n_batch(mut self, n_batch: u32) -> Self {
+    pub const fn with_n_batch(mut self, n_batch: u32) -> Self {
         self.context_params.n_batch = n_batch;
         self
     }
@@ -300,7 +300,7 @@ impl LlamaContextParams {
     /// assert_eq!(params.n_batch(), 2048);
     /// ```
     #[must_use]
-    pub fn n_batch(&self) -> u32 {
+    pub const fn n_batch(&self) -> u32 {
         self.context_params.n_batch
     }
 
@@ -316,7 +316,7 @@ impl LlamaContextParams {
     /// assert_eq!(params.n_ubatch(), 512);
     /// ```
     #[must_use]
-    pub fn with_n_ubatch(mut self, n_ubatch: u32) -> Self {
+    pub const fn with_n_ubatch(mut self, n_ubatch: u32) -> Self {
         self.context_params.n_ubatch = n_ubatch;
         self
     }
@@ -331,13 +331,13 @@ impl LlamaContextParams {
     /// assert_eq!(params.n_ubatch(), 512);
     /// ```
     #[must_use]
-    pub fn n_ubatch(&self) -> u32 {
+    pub const fn n_ubatch(&self) -> u32 {
         self.context_params.n_ubatch
     }
 
     /// Set the flash attention policy using llama.cpp enum
     #[must_use]
-    pub fn with_flash_attention_policy(
+    pub const fn with_flash_attention_policy(
         mut self,
         policy: llama_cpp_bindings_sys::llama_flash_attn_type,
     ) -> Self {
@@ -347,7 +347,7 @@ impl LlamaContextParams {
 
     /// Get the flash attention policy
     #[must_use]
-    pub fn flash_attention_policy(&self) -> llama_cpp_bindings_sys::llama_flash_attn_type {
+    pub const fn flash_attention_policy(&self) -> llama_cpp_bindings_sys::llama_flash_attn_type {
         self.context_params.flash_attn_type
     }
 
@@ -362,7 +362,7 @@ impl LlamaContextParams {
     /// assert_eq!(params.offload_kqv(), false);
     /// ```
     #[must_use]
-    pub fn with_offload_kqv(mut self, enabled: bool) -> Self {
+    pub const fn with_offload_kqv(mut self, enabled: bool) -> Self {
         self.context_params.offload_kqv = enabled;
         self
     }
@@ -377,7 +377,7 @@ impl LlamaContextParams {
     /// assert_eq!(params.offload_kqv(), true);
     /// ```
     #[must_use]
-    pub fn offload_kqv(&self) -> bool {
+    pub const fn offload_kqv(&self) -> bool {
         self.context_params.offload_kqv
     }
 
@@ -421,7 +421,7 @@ impl LlamaContextParams {
     /// assert_eq!(params.rope_freq_base(), 0.5);
     /// ```
     #[must_use]
-    pub fn with_rope_freq_base(mut self, rope_freq_base: f32) -> Self {
+    pub const fn with_rope_freq_base(mut self, rope_freq_base: f32) -> Self {
         self.context_params.rope_freq_base = rope_freq_base;
         self
     }
@@ -435,7 +435,7 @@ impl LlamaContextParams {
     /// assert_eq!(params.rope_freq_base(), 0.0);
     /// ```
     #[must_use]
-    pub fn rope_freq_base(&self) -> f32 {
+    pub const fn rope_freq_base(&self) -> f32 {
         self.context_params.rope_freq_base
     }
 
@@ -450,7 +450,7 @@ impl LlamaContextParams {
     /// assert_eq!(params.rope_freq_scale(), 0.5);
     /// ```
     #[must_use]
-    pub fn with_rope_freq_scale(mut self, rope_freq_scale: f32) -> Self {
+    pub const fn with_rope_freq_scale(mut self, rope_freq_scale: f32) -> Self {
         self.context_params.rope_freq_scale = rope_freq_scale;
         self
     }
@@ -464,7 +464,7 @@ impl LlamaContextParams {
     /// assert_eq!(params.rope_freq_scale(), 0.0);
     /// ```
     #[must_use]
-    pub fn rope_freq_scale(&self) -> f32 {
+    pub const fn rope_freq_scale(&self) -> f32 {
         self.context_params.rope_freq_scale
     }
 
@@ -477,7 +477,7 @@ impl LlamaContextParams {
     /// assert_eq!(params.n_threads(), 4);
     /// ```
     #[must_use]
-    pub fn n_threads(&self) -> i32 {
+    pub const fn n_threads(&self) -> i32 {
         self.context_params.n_threads
     }
 
@@ -490,7 +490,7 @@ impl LlamaContextParams {
     /// assert_eq!(params.n_threads_batch(), 4);
     /// ```
     #[must_use]
-    pub fn n_threads_batch(&self) -> i32 {
+    pub const fn n_threads_batch(&self) -> i32 {
         self.context_params.n_threads_batch
     }
 
@@ -505,7 +505,7 @@ impl LlamaContextParams {
     /// assert_eq!(params.n_threads(), 8);
     /// ```
     #[must_use]
-    pub fn with_n_threads(mut self, n_threads: i32) -> Self {
+    pub const fn with_n_threads(mut self, n_threads: i32) -> Self {
         self.context_params.n_threads = n_threads;
         self
     }
@@ -521,7 +521,7 @@ impl LlamaContextParams {
     /// assert_eq!(params.n_threads_batch(), 8);
     /// ```
     #[must_use]
-    pub fn with_n_threads_batch(mut self, n_threads: i32) -> Self {
+    pub const fn with_n_threads_batch(mut self, n_threads: i32) -> Self {
         self.context_params.n_threads_batch = n_threads;
         self
     }
@@ -535,7 +535,7 @@ impl LlamaContextParams {
     /// assert!(!params.embeddings());
     /// ```
     #[must_use]
-    pub fn embeddings(&self) -> bool {
+    pub const fn embeddings(&self) -> bool {
         self.context_params.embeddings
     }
 
@@ -550,7 +550,7 @@ impl LlamaContextParams {
     /// assert!(params.embeddings());
     /// ```
     #[must_use]
-    pub fn with_embeddings(mut self, embedding: bool) -> Self {
+    pub const fn with_embeddings(mut self, embedding: bool) -> Self {
         self.context_params.embeddings = embedding;
         self
     }
@@ -591,7 +591,10 @@ impl LlamaContextParams {
     /// let params = params.with_cb_eval_user_data(user_data);
     /// ```
     #[must_use]
-    pub fn with_cb_eval_user_data(mut self, cb_eval_user_data: *mut std::ffi::c_void) -> Self {
+    pub const fn with_cb_eval_user_data(
+        mut self,
+        cb_eval_user_data: *mut std::ffi::c_void,
+    ) -> Self {
         self.context_params.cb_eval_user_data = cb_eval_user_data;
         self
     }
@@ -636,7 +639,7 @@ impl LlamaContextParams {
     /// assert_eq!(params.swa_full(), false);
     /// ```
     #[must_use]
-    pub fn with_swa_full(mut self, enabled: bool) -> Self {
+    pub const fn with_swa_full(mut self, enabled: bool) -> Self {
         self.context_params.swa_full = enabled;
         self
     }
@@ -651,7 +654,7 @@ impl LlamaContextParams {
     /// assert_eq!(params.swa_full(), true);
     /// ```
     #[must_use]
-    pub fn swa_full(&self) -> bool {
+    pub const fn swa_full(&self) -> bool {
         self.context_params.swa_full
     }
 
@@ -666,7 +669,7 @@ impl LlamaContextParams {
     /// assert_eq!(params.n_seq_max(), 64);
     /// ```
     #[must_use]
-    pub fn with_n_seq_max(mut self, n_seq_max: u32) -> Self {
+    pub const fn with_n_seq_max(mut self, n_seq_max: u32) -> Self {
         self.context_params.n_seq_max = n_seq_max;
         self
     }
@@ -681,7 +684,7 @@ impl LlamaContextParams {
     /// assert_eq!(params.n_seq_max(), 1);
     /// ```
     #[must_use]
-    pub fn n_seq_max(&self) -> u32 {
+    pub const fn n_seq_max(&self) -> u32 {
         self.context_params.n_seq_max
     }
     /// Set the KV cache data type for K
@@ -787,10 +790,341 @@ mod tests {
         assert_eq!(params.n_ctx(), std::num::NonZeroU32::new(512));
         assert_eq!(params.n_batch(), 2048);
         assert_eq!(params.n_ubatch(), 512);
+        assert_eq!(params.rope_scaling_type(), RopeScalingType::Unspecified);
+        assert_eq!(params.pooling_type(), LlamaPoolingType::Unspecified);
+    }
+
+    #[test]
+    fn with_n_ctx_sets_value() {
+        let params =
+            super::LlamaContextParams::default().with_n_ctx(std::num::NonZeroU32::new(2048));
+
+        assert_eq!(params.n_ctx(), std::num::NonZeroU32::new(2048));
+    }
+
+    #[test]
+    fn with_n_ctx_none_sets_zero() {
+        let params = super::LlamaContextParams::default().with_n_ctx(None);
+
+        assert_eq!(params.n_ctx(), None);
+    }
+
+    #[test]
+    fn with_n_batch_sets_value() {
+        let params = super::LlamaContextParams::default().with_n_batch(4096);
+
+        assert_eq!(params.n_batch(), 4096);
+    }
+
+    #[test]
+    fn with_n_ubatch_sets_value() {
+        let params = super::LlamaContextParams::default().with_n_ubatch(1024);
+
+        assert_eq!(params.n_ubatch(), 1024);
+    }
+
+    #[test]
+    fn with_n_seq_max_sets_value() {
+        let params = super::LlamaContextParams::default().with_n_seq_max(64);
+
+        assert_eq!(params.n_seq_max(), 64);
+    }
+
+    #[test]
+    fn with_embeddings_enables() {
+        let params = super::LlamaContextParams::default().with_embeddings(true);
+
+        assert!(params.embeddings());
+    }
+
+    #[test]
+    fn with_embeddings_disables() {
+        let params = super::LlamaContextParams::default().with_embeddings(false);
+
+        assert!(!params.embeddings());
+    }
+
+    #[test]
+    fn with_offload_kqv_disables() {
+        let params = super::LlamaContextParams::default().with_offload_kqv(false);
+
+        assert!(!params.offload_kqv());
+    }
+
+    #[test]
+    fn with_offload_kqv_enables() {
+        let params = super::LlamaContextParams::default().with_offload_kqv(true);
+
+        assert!(params.offload_kqv());
+    }
+
+    #[test]
+    fn with_swa_full_disables() {
+        let params = super::LlamaContextParams::default().with_swa_full(false);
+
+        assert!(!params.swa_full());
+    }
+
+    #[test]
+    fn with_swa_full_enables() {
+        let params = super::LlamaContextParams::default().with_swa_full(true);
+
+        assert!(params.swa_full());
+    }
+
+    #[test]
+    fn with_rope_scaling_type_linear() {
+        let params =
+            super::LlamaContextParams::default().with_rope_scaling_type(RopeScalingType::Linear);
+
+        assert_eq!(params.rope_scaling_type(), RopeScalingType::Linear);
+    }
+
+    #[test]
+    fn with_rope_scaling_type_yarn() {
+        let params =
+            super::LlamaContextParams::default().with_rope_scaling_type(RopeScalingType::Yarn);
+
+        assert_eq!(params.rope_scaling_type(), RopeScalingType::Yarn);
+    }
+
+    #[test]
+    fn with_rope_scaling_type_none() {
+        let params =
+            super::LlamaContextParams::default().with_rope_scaling_type(RopeScalingType::None);
+
+        assert_eq!(params.rope_scaling_type(), RopeScalingType::None);
+    }
+
+    #[test]
+    fn with_rope_freq_base_sets_value() {
+        let params = super::LlamaContextParams::default().with_rope_freq_base(10000.0);
+
+        assert!((params.rope_freq_base() - 10000.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn with_rope_freq_scale_sets_value() {
+        let params = super::LlamaContextParams::default().with_rope_freq_scale(0.5);
+
+        assert!((params.rope_freq_scale() - 0.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn with_n_threads_sets_value() {
+        let params = super::LlamaContextParams::default().with_n_threads(16);
+
+        assert_eq!(params.n_threads(), 16);
+    }
+
+    #[test]
+    fn with_n_threads_batch_sets_value() {
+        let params = super::LlamaContextParams::default().with_n_threads_batch(16);
+
+        assert_eq!(params.n_threads_batch(), 16);
+    }
+
+    #[test]
+    fn with_pooling_type_mean() {
+        let params = super::LlamaContextParams::default().with_pooling_type(LlamaPoolingType::Mean);
+
+        assert_eq!(params.pooling_type(), LlamaPoolingType::Mean);
+    }
+
+    #[test]
+    fn with_pooling_type_cls() {
+        let params = super::LlamaContextParams::default().with_pooling_type(LlamaPoolingType::Cls);
+
+        assert_eq!(params.pooling_type(), LlamaPoolingType::Cls);
+    }
+
+    #[test]
+    fn with_pooling_type_last() {
+        let params = super::LlamaContextParams::default().with_pooling_type(LlamaPoolingType::Last);
+
+        assert_eq!(params.pooling_type(), LlamaPoolingType::Last);
+    }
+
+    #[test]
+    fn with_pooling_type_rank() {
+        let params = super::LlamaContextParams::default().with_pooling_type(LlamaPoolingType::Rank);
+
+        assert_eq!(params.pooling_type(), LlamaPoolingType::Rank);
+    }
+
+    #[test]
+    fn with_pooling_type_none() {
+        let params = super::LlamaContextParams::default().with_pooling_type(LlamaPoolingType::None);
+
+        assert_eq!(params.pooling_type(), LlamaPoolingType::None);
+    }
+
+    #[test]
+    fn with_type_k_sets_value() {
+        let params = super::LlamaContextParams::default().with_type_k(KvCacheType::Q4_0);
+
+        assert_eq!(params.type_k(), KvCacheType::Q4_0);
+    }
+
+    #[test]
+    fn with_type_v_sets_value() {
+        let params = super::LlamaContextParams::default().with_type_v(KvCacheType::Q4_1);
+
+        assert_eq!(params.type_v(), KvCacheType::Q4_1);
+    }
+
+    #[test]
+    fn with_flash_attention_policy_sets_value() {
+        let params = super::LlamaContextParams::default()
+            .with_flash_attention_policy(llama_cpp_bindings_sys::LLAMA_FLASH_ATTN_TYPE_ENABLED);
+
         assert_eq!(
-            params.rope_scaling_type(),
-            super::RopeScalingType::Unspecified
+            params.flash_attention_policy(),
+            llama_cpp_bindings_sys::LLAMA_FLASH_ATTN_TYPE_ENABLED
         );
-        assert_eq!(params.pooling_type(), super::LlamaPoolingType::Unspecified);
+    }
+
+    #[test]
+    fn builder_chaining_preserves_all_values() {
+        let params = super::LlamaContextParams::default()
+            .with_n_ctx(std::num::NonZeroU32::new(1024))
+            .with_n_batch(4096)
+            .with_n_ubatch(256)
+            .with_n_threads(8)
+            .with_n_threads_batch(12)
+            .with_embeddings(true)
+            .with_offload_kqv(false)
+            .with_rope_scaling_type(RopeScalingType::Yarn)
+            .with_rope_freq_base(5000.0)
+            .with_rope_freq_scale(0.25);
+
+        assert_eq!(params.n_ctx(), std::num::NonZeroU32::new(1024));
+        assert_eq!(params.n_batch(), 4096);
+        assert_eq!(params.n_ubatch(), 256);
+        assert_eq!(params.n_threads(), 8);
+        assert_eq!(params.n_threads_batch(), 12);
+        assert!(params.embeddings());
+        assert!(!params.offload_kqv());
+        assert_eq!(params.rope_scaling_type(), RopeScalingType::Yarn);
+        assert!((params.rope_freq_base() - 5000.0).abs() < f32::EPSILON);
+        assert!((params.rope_freq_scale() - 0.25).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn rope_scaling_type_roundtrip_all_variants() {
+        for (raw, expected) in [
+            (-1, RopeScalingType::Unspecified),
+            (0, RopeScalingType::None),
+            (1, RopeScalingType::Linear),
+            (2, RopeScalingType::Yarn),
+        ] {
+            let from_raw = RopeScalingType::from(raw);
+            assert_eq!(from_raw, expected);
+
+            let back_to_raw: i32 = from_raw.into();
+            assert_eq!(back_to_raw, raw);
+        }
+    }
+
+    #[test]
+    fn pooling_type_roundtrip_all_variants() {
+        for (raw, expected) in [
+            (-1, LlamaPoolingType::Unspecified),
+            (0, LlamaPoolingType::None),
+            (1, LlamaPoolingType::Mean),
+            (2, LlamaPoolingType::Cls),
+            (3, LlamaPoolingType::Last),
+            (4, LlamaPoolingType::Rank),
+        ] {
+            let from_raw = LlamaPoolingType::from(raw);
+            assert_eq!(from_raw, expected);
+
+            let back_to_raw: i32 = from_raw.into();
+            assert_eq!(back_to_raw, raw);
+        }
+    }
+
+    #[test]
+    fn kv_cache_type_all_known_variants_roundtrip() {
+        let all_variants = [
+            KvCacheType::F32,
+            KvCacheType::F16,
+            KvCacheType::Q4_0,
+            KvCacheType::Q4_1,
+            KvCacheType::Q5_0,
+            KvCacheType::Q5_1,
+            KvCacheType::Q8_0,
+            KvCacheType::Q8_1,
+            KvCacheType::Q2_K,
+            KvCacheType::Q3_K,
+            KvCacheType::Q4_K,
+            KvCacheType::Q5_K,
+            KvCacheType::Q6_K,
+            KvCacheType::Q8_K,
+            KvCacheType::IQ2_XXS,
+            KvCacheType::IQ2_XS,
+            KvCacheType::IQ3_XXS,
+            KvCacheType::IQ1_S,
+            KvCacheType::IQ4_NL,
+            KvCacheType::IQ3_S,
+            KvCacheType::IQ2_S,
+            KvCacheType::IQ4_XS,
+            KvCacheType::I8,
+            KvCacheType::I16,
+            KvCacheType::I32,
+            KvCacheType::I64,
+            KvCacheType::F64,
+            KvCacheType::IQ1_M,
+            KvCacheType::BF16,
+            KvCacheType::TQ1_0,
+            KvCacheType::TQ2_0,
+            KvCacheType::MXFP4,
+        ];
+
+        for variant in all_variants {
+            let ggml_type: llama_cpp_bindings_sys::ggml_type = variant.into();
+            let back = KvCacheType::from(ggml_type);
+
+            assert_eq!(back, variant);
+        }
+    }
+
+    #[test]
+    fn with_cb_eval_sets_callback() {
+        extern "C" fn test_cb_eval(
+            _tensor: *mut llama_cpp_bindings_sys::ggml_tensor,
+            _ask: bool,
+            _user_data: *mut std::ffi::c_void,
+        ) -> bool {
+            false
+        }
+
+        let result = test_cb_eval(std::ptr::null_mut(), false, std::ptr::null_mut());
+
+        assert!(!result);
+
+        let params = super::LlamaContextParams::default().with_cb_eval(Some(test_cb_eval));
+
+        assert!(params.context_params.cb_eval.is_some());
+    }
+
+    #[test]
+    fn with_cb_eval_user_data_sets_pointer() {
+        let mut value: i32 = 42;
+        let user_data = (&raw mut value).cast::<std::ffi::c_void>();
+        let params = super::LlamaContextParams::default().with_cb_eval_user_data(user_data);
+
+        assert_eq!(params.context_params.cb_eval_user_data, user_data);
+    }
+
+    #[test]
+    fn with_flash_attention_policy_disabled() {
+        let params = super::LlamaContextParams::default()
+            .with_flash_attention_policy(llama_cpp_bindings_sys::LLAMA_FLASH_ATTN_TYPE_DISABLED);
+
+        assert_eq!(
+            params.flash_attention_policy(),
+            llama_cpp_bindings_sys::LLAMA_FLASH_ATTN_TYPE_DISABLED
+        );
     }
 }

@@ -23,3 +23,32 @@ pub struct GrammarTrigger {
     /// Token id for token triggers.
     pub token: Option<LlamaToken>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::GrammarTrigger;
+    use super::GrammarTriggerType;
+    use crate::token::LlamaToken;
+
+    #[test]
+    fn token_type_has_token() {
+        let trigger = GrammarTrigger {
+            trigger_type: GrammarTriggerType::Token,
+            value: String::from("test_token"),
+            token: Some(LlamaToken(42)),
+        };
+
+        assert!(trigger.token.is_some());
+    }
+
+    #[test]
+    fn non_token_type_has_no_token() {
+        let trigger = GrammarTrigger {
+            trigger_type: GrammarTriggerType::Word,
+            value: String::from("test_word"),
+            token: None,
+        };
+
+        assert!(trigger.token.is_none());
+    }
+}

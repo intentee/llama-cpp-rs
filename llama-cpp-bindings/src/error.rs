@@ -129,6 +129,34 @@ pub enum EmbeddingsError {
     /// The given sequence index exceeds the max sequence id
     #[error("Can't use sequence embeddings with a model supporting only LLAMA_POOLING_TYPE_NONE")]
     NonePoolType,
+    /// The embedding dimension does not fit into a usize.
+    #[error("Invalid embedding dimension: {0}")]
+    InvalidEmbeddingDimension(#[source] std::num::TryFromIntError),
+}
+
+/// When logits-related functions fail
+#[derive(Debug, Eq, PartialEq, thiserror::Error)]
+pub enum LogitsError {
+    /// The logits data pointer is null.
+    #[error("logits data pointer is null")]
+    NullLogits,
+    /// The requested token index has not been initialized for logits.
+    #[error("logit for token index {0} is not initialized")]
+    TokenNotInitialized(i32),
+    /// The token index exceeds the context size.
+    #[error("token index {token_index} exceeds context size {context_size}")]
+    TokenIndexExceedsContext {
+        /// The token index that was requested.
+        token_index: u32,
+        /// The context size.
+        context_size: u32,
+    },
+    /// The vocabulary size does not fit into a usize.
+    #[error("n_vocab does not fit into usize: {0}")]
+    VocabSizeOverflow(#[source] std::num::TryFromIntError),
+    /// The token index does not fit into a u32.
+    #[error("token_index does not fit into u32: {0}")]
+    TokenIndexOverflow(#[source] std::num::TryFromIntError),
 }
 
 /// Errors that can occur when initializing a grammar sampler
@@ -138,14 +166,14 @@ pub enum GrammarError {
     #[error("Grammar root not found in grammar string")]
     RootNotFound,
     /// The trigger word contains null bytes
-    #[error("Trigger word contains null bytes")]
-    TriggerWordNullBytes,
+    #[error("Trigger word contains null bytes: {0}")]
+    TriggerWordNullBytes(NulError),
     /// The grammar string or root contains null bytes
-    #[error("Grammar string or root contains null bytes")]
-    GrammarNullBytes,
+    #[error("Grammar string or root contains null bytes: {0}")]
+    GrammarNullBytes(NulError),
     /// A string contains null bytes
     #[error("String contains null bytes: {0}")]
-    NulError(#[from] std::ffi::NulError),
+    NulError(#[from] NulError),
     /// The grammar call returned null
     #[error("Grammar call returned null")]
     NullGrammar,
@@ -169,9 +197,9 @@ pub enum SamplingError {
 impl From<NonZeroI32> for DecodeError {
     fn from(value: NonZeroI32) -> Self {
         match value.get() {
-            1 => DecodeError::NoKvCacheSlot,
-            -1 => DecodeError::NTokensZero,
-            error_code => DecodeError::Unknown(error_code),
+            1 => Self::NoKvCacheSlot,
+            -1 => Self::NTokensZero,
+            error_code => Self::Unknown(error_code),
         }
     }
 }
@@ -180,9 +208,9 @@ impl From<NonZeroI32> for DecodeError {
 impl From<NonZeroI32> for EncodeError {
     fn from(value: NonZeroI32) -> Self {
         match value.get() {
-            1 => EncodeError::NoKvCacheSlot,
-            -1 => EncodeError::NTokensZero,
-            error_code => EncodeError::Unknown(error_code),
+            1 => Self::NoKvCacheSlot,
+            -1 => Self::NTokensZero,
+            error_code => Self::Unknown(error_code),
         }
     }
 }
@@ -199,6 +227,9 @@ pub enum LlamaModelLoadError {
     /// Failed to convert the path to a rust str. This means the path was not valid unicode
     #[error("failed to convert path {0} to str")]
     PathToStrError(PathBuf),
+    /// The model file does not exist at the given path.
+    #[error("model file not found: {0}")]
+    FileNotFound(PathBuf),
 }
 
 /// An error that can occur when loading a model.
@@ -213,6 +244,9 @@ pub enum LlamaLoraAdapterInitError {
     /// Failed to convert the path to a rust str. This means the path was not valid unicode
     #[error("failed to convert path {0} to str")]
     PathToStrError(PathBuf),
+    /// The adapter file does not exist at the given path.
+    #[error("adapter file not found: {0}")]
+    FileNotFound(PathBuf),
 }
 
 /// An error that can occur when loading a model.
@@ -244,6 +278,9 @@ pub enum TokenToStringError {
     /// The token was not valid utf8.
     #[error("FromUtf8Error {0}")]
     FromUtf8Error(#[from] FromUtf8Error),
+    /// An integer conversion failed.
+    #[error("Integer conversion error: {0}")]
+    IntConversionError(#[from] std::num::TryFromIntError),
 }
 
 /// Failed to convert a string to a token sequence.
@@ -283,6 +320,9 @@ pub enum ApplyChatTemplateError {
     /// invalid grammar trigger data returned by llama.cpp.
     #[error("invalid grammar trigger data")]
     InvalidGrammarTriggerType,
+    /// An integer conversion failed.
+    #[error("Integer conversion error: {0}")]
+    IntConversionError(#[from] std::num::TryFromIntError),
 }
 
 /// Failed to parse a chat response.
