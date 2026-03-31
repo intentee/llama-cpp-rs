@@ -69,7 +69,7 @@ fn build_tok_env(model: &LlamaModel) -> Arc<ApproximateTokEnv> {
 
 // --- extern "C" vtable callbacks ---
 
-unsafe extern "C" fn llg_name(
+const unsafe extern "C" fn llg_name(
     _smpl: *const llama_cpp_bindings_sys::llama_sampler,
 ) -> *const std::os::raw::c_char {
     c"llguidance".as_ptr()
@@ -168,6 +168,10 @@ static mut LLG_SAMPLER_I: llama_cpp_bindings_sys::llama_sampler_i =
     };
 
 /// Create an llguidance-based constrained decoding sampler.
+///
+/// # Errors
+///
+/// Returns `GrammarError` if the parser factory, grammar, or parser cannot be created.
 pub fn create_llg_sampler(
     model: &LlamaModel,
     grammar_kind: &str,

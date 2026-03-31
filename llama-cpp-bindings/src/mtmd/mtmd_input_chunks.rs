@@ -6,7 +6,7 @@ use super::mtmd_context::MtmdContext;
 use super::mtmd_error::MtmdEvalError;
 use super::mtmd_input_chunk::MtmdInputChunk;
 
-fn check_eval_result(result: i32) -> Result<(), MtmdEvalError> {
+const fn check_eval_result(result: i32) -> Result<(), MtmdEvalError> {
     if result == 0 {
         Ok(())
     } else {
@@ -109,7 +109,7 @@ impl MtmdInputChunks {
     ) -> Result<llama_cpp_bindings_sys::llama_pos, MtmdEvalError> {
         let context_max_batch = llama_ctx.n_batch();
 
-        if n_batch > 0 && (n_batch as u32) > context_max_batch {
+        if n_batch > 0 && n_batch.cast_unsigned() > context_max_batch {
             return Err(MtmdEvalError::BatchSizeExceedsContextLimit {
                 requested: n_batch,
                 context_max: context_max_batch,

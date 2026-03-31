@@ -10,7 +10,7 @@ use super::mtmd_input_chunk::MtmdInputChunk;
 use super::mtmd_input_chunks::MtmdInputChunks;
 use super::mtmd_input_text::MtmdInputText;
 
-fn tokenize_result_to_error(result: i32) -> MtmdTokenizeError {
+const fn tokenize_result_to_error(result: i32) -> MtmdTokenizeError {
     match result {
         1 => MtmdTokenizeError::BitmapCountMismatch,
         2 => MtmdTokenizeError::ImagePreprocessingError,
@@ -18,7 +18,7 @@ fn tokenize_result_to_error(result: i32) -> MtmdTokenizeError {
     }
 }
 
-fn check_encode_result(result: i32) -> Result<(), MtmdEncodeError> {
+const fn check_encode_result(result: i32) -> Result<(), MtmdEncodeError> {
     if result == 0 {
         Ok(())
     } else {

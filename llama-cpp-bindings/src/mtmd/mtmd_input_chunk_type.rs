@@ -37,9 +37,9 @@ impl TryFrom<llama_cpp_bindings_sys::mtmd_input_chunk_type> for MtmdInputChunkTy
         chunk_type: llama_cpp_bindings_sys::mtmd_input_chunk_type,
     ) -> Result<Self, Self::Error> {
         match chunk_type {
-            llama_cpp_bindings_sys::MTMD_INPUT_CHUNK_TYPE_TEXT => Ok(MtmdInputChunkType::Text),
-            llama_cpp_bindings_sys::MTMD_INPUT_CHUNK_TYPE_IMAGE => Ok(MtmdInputChunkType::Image),
-            llama_cpp_bindings_sys::MTMD_INPUT_CHUNK_TYPE_AUDIO => Ok(MtmdInputChunkType::Audio),
+            llama_cpp_bindings_sys::MTMD_INPUT_CHUNK_TYPE_TEXT => Ok(Self::Text),
+            llama_cpp_bindings_sys::MTMD_INPUT_CHUNK_TYPE_IMAGE => Ok(Self::Image),
+            llama_cpp_bindings_sys::MTMD_INPUT_CHUNK_TYPE_AUDIO => Ok(Self::Audio),
             unknown => Err(MtmdInputChunkTypeError(unknown)),
         }
     }
