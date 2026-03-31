@@ -555,13 +555,13 @@ impl LlamaModel {
     ) -> Result<Self, LlamaModelLoadError> {
         let path = path.as_ref();
 
-        if !path.exists() {
-            return Err(LlamaModelLoadError::FileNotFound(path.to_path_buf()));
-        }
-
         let path_str = path
             .to_str()
             .ok_or_else(|| LlamaModelLoadError::PathToStrError(path.to_path_buf()))?;
+
+        if !path.exists() {
+            return Err(LlamaModelLoadError::FileNotFound(path.to_path_buf()));
+        }
 
         let cstr = CString::new(path_str).expect("valid UTF-8 path cannot contain null bytes");
         let llama_model = unsafe {
@@ -588,15 +588,15 @@ impl LlamaModel {
     ) -> Result<LlamaLoraAdapter, LlamaLoraAdapterInitError> {
         let path = path.as_ref();
 
+        let path_str = path
+            .to_str()
+            .ok_or_else(|| LlamaLoraAdapterInitError::PathToStrError(path.to_path_buf()))?;
+
         if !path.exists() {
             return Err(LlamaLoraAdapterInitError::FileNotFound(path.to_path_buf()));
         }
 
-        let path = path
-            .to_str()
-            .ok_or_else(|| LlamaLoraAdapterInitError::PathToStrError(path.to_path_buf()))?;
-
-        let cstr = CString::new(path).expect("valid UTF-8 path cannot contain null bytes");
+        let cstr = CString::new(path_str).expect("valid UTF-8 path cannot contain null bytes");
         let adapter = unsafe {
             llama_cpp_bindings_sys::llama_adapter_lora_init(self.model.as_ptr(), cstr.as_ptr())
         };
@@ -1226,12 +1226,13 @@ mod tests {
         let backend = LlamaBackend::init().unwrap();
         let model_params = LlamaModelParams::default();
         let non_utf8_path = std::path::Path::new(OsStr::from_bytes(b"/tmp/\xff\xfe.gguf"));
-        std::fs::write(non_utf8_path, b"dummy").unwrap();
 
         let result = LlamaModel::load_from_file(&backend, non_utf8_path, &model_params);
 
-        assert!(result.is_err());
-        let _ = std::fs::remove_file(non_utf8_path);
+        assert_eq!(
+            result.unwrap_err(),
+            crate::LlamaModelLoadError::PathToStrError(non_utf8_path.to_path_buf())
+        );
     }
 
     #[cfg(unix)]
@@ -1243,12 +1244,13 @@ mod tests {
 
         let (_backend, model) = test_model::load_default_model().unwrap();
         let non_utf8_path = std::path::Path::new(OsStr::from_bytes(b"/tmp/\xff\xfe.gguf"));
-        std::fs::write(non_utf8_path, b"dummy").unwrap();
 
         let result = model.lora_adapter_init(non_utf8_path);
 
-        assert!(result.is_err());
-        let _ = std::fs::remove_file(non_utf8_path);
+        assert_eq!(
+            result.unwrap_err(),
+            crate::LlamaLoraAdapterInitError::PathToStrError(non_utf8_path.to_path_buf())
+        );
     }
 
     #[test]
