@@ -45,29 +45,29 @@ impl Iterator for KvOverrideValueIterator<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let overrides = self.model_params.params.kv_overrides;
+
         if overrides.is_null() {
             return None;
         }
 
-        // SAFETY: llama.cpp seems to guarantee that the last element contains an empty key or is valid. We've checked
-        // the prev one in the last iteration, the next one should be valid or 0 (and thus safe to deref)
-        let current = unsafe { *overrides.add(self.current) };
+        loop {
+            // SAFETY: llama.cpp guarantees the last element contains an empty key.
+            // We've checked the previous one in the last iteration, the next one
+            // should be valid or 0 (and thus safe to deref).
+            let current = unsafe { *overrides.add(self.current) };
 
-        if current.key[0] == 0 {
-            return None;
-        }
+            if current.key[0] == 0 {
+                return None;
+            }
 
-        let Ok(value) = ParamOverrideValue::try_from(&current) else {
             self.current += 1;
 
-            return self.next();
-        };
+            if let Ok(value) = ParamOverrideValue::try_from(&current) {
+                let key = unsafe { CStr::from_ptr(current.key.as_ptr()).to_owned() };
 
-        let key = unsafe { CStr::from_ptr(current.key.as_ptr()).to_owned() };
-
-        self.current += 1;
-
-        Some((key, value))
+                return Some((key, value));
+            }
+        }
     }
 }
 

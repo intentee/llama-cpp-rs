@@ -166,11 +166,11 @@ pub enum GrammarError {
     #[error("Grammar root not found in grammar string")]
     RootNotFound,
     /// The trigger word contains null bytes
-    #[error("Trigger word contains null bytes")]
-    TriggerWordNullBytes,
+    #[error("Trigger word contains null bytes: {0}")]
+    TriggerWordNullBytes(NulError),
     /// The grammar string or root contains null bytes
-    #[error("Grammar string or root contains null bytes")]
-    GrammarNullBytes,
+    #[error("Grammar string or root contains null bytes: {0}")]
+    GrammarNullBytes(NulError),
     /// A string contains null bytes
     #[error("String contains null bytes: {0}")]
     NulError(#[from] NulError),

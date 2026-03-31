@@ -453,43 +453,28 @@ impl LlamaSampler {
             return Err(GrammarError::RootNotFound);
         }
 
-        if grammar_str.contains('\0') || grammar_root.contains('\0') {
-            return Err(GrammarError::GrammarNullBytes);
-        }
+        let grammar = CString::new(grammar_str).map_err(GrammarError::GrammarNullBytes)?;
+        let root = CString::new(grammar_root).map_err(GrammarError::GrammarNullBytes)?;
 
-        Ok((
-            CString::new(grammar_str).expect("null bytes already validated"),
-            CString::new(grammar_root).expect("null bytes already validated"),
-        ))
+        Ok((grammar, root))
     }
 
     fn sanitize_trigger_words(
         trigger_words: impl IntoIterator<Item = impl AsRef<[u8]>>,
     ) -> Result<Vec<CString>, GrammarError> {
-        let trigger_words: Vec<_> = trigger_words.into_iter().collect();
-        if trigger_words
-            .iter()
-            .any(|word| word.as_ref().contains(&b'\0'))
-        {
-            return Err(GrammarError::TriggerWordNullBytes);
-        }
-        Ok(trigger_words
+        trigger_words
             .into_iter()
-            .map(|word| CString::new(word.as_ref()).expect("null bytes already validated"))
-            .collect())
+            .map(|word| CString::new(word.as_ref()).map_err(GrammarError::TriggerWordNullBytes))
+            .collect()
     }
 
     fn sanitize_trigger_patterns(
         trigger_patterns: &[String],
     ) -> Result<Vec<CString>, GrammarError> {
-        let mut patterns = Vec::with_capacity(trigger_patterns.len());
-        for pattern in trigger_patterns {
-            if pattern.contains('\0') {
-                return Err(GrammarError::GrammarNullBytes);
-            }
-            patterns.push(CString::new(pattern.as_str()).expect("null bytes already validated"));
-        }
-        Ok(patterns)
+        trigger_patterns
+            .iter()
+            .map(|pattern| CString::new(pattern.as_str()).map_err(GrammarError::GrammarNullBytes))
+            .collect()
     }
 
     /// DRY sampler, designed by p-e-w, as described in:
@@ -697,14 +682,20 @@ mod tests {
     fn sanitize_grammar_strings_null_byte_in_grammar() {
         let result = LlamaSampler::sanitize_grammar_strings("root ::= \"\0\"", "root");
 
-        assert_eq!(result.err(), Some(GrammarError::GrammarNullBytes));
+        assert!(matches!(
+            result.err(),
+            Some(GrammarError::GrammarNullBytes(_))
+        ));
     }
 
     #[test]
     fn sanitize_grammar_strings_null_byte_in_root() {
         let result = LlamaSampler::sanitize_grammar_strings("ro\0ot ::= \"hello\"", "ro\0ot");
 
-        assert_eq!(result.err(), Some(GrammarError::GrammarNullBytes));
+        assert!(matches!(
+            result.err(),
+            Some(GrammarError::GrammarNullBytes(_))
+        ));
     }
 
     #[test]
@@ -730,7 +721,10 @@ mod tests {
         let words: Vec<&[u8]> = vec![b"hel\0lo"];
         let result = LlamaSampler::sanitize_trigger_words(words);
 
-        assert_eq!(result.err(), Some(GrammarError::TriggerWordNullBytes));
+        assert!(matches!(
+            result.err(),
+            Some(GrammarError::TriggerWordNullBytes(_))
+        ));
     }
 
     #[test]
@@ -756,7 +750,10 @@ mod tests {
         let patterns = vec!["hel\0lo".to_string()];
         let result = LlamaSampler::sanitize_trigger_patterns(&patterns);
 
-        assert_eq!(result.err(), Some(GrammarError::GrammarNullBytes));
+        assert!(matches!(
+            result.err(),
+            Some(GrammarError::GrammarNullBytes(_))
+        ));
     }
 
     #[test]
