@@ -21,7 +21,7 @@ tracing-core = "0.1"
 
 # build
 bindgen = "0.72.1"
-cc = "1.2.56"
+cc = "1.2.58"
 cmake = "0.1"
 find_cuda_helper = "0.2.0"
 glob = "0.3.3"
@@ -30,7 +30,7 @@ walkdir = "2"
 
 # dev
 anyhow = "1.0.102"
-hf-hub = "0.4.3"
+hf-hub = "0.5.0"
 serde_json = "1.0"
 serial_test = "3"
 tracing-subscriber = { version = "0.3", features = ["json"] }

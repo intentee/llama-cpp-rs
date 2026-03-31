@@ -88,6 +88,38 @@ impl From<LlamaPoolingType> for i32 {
     }
 }
 
+/// A rusty wrapper around `LLAMA_ATTENTION_TYPE`.
+#[repr(i8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum LlamaAttentionType {
+    /// The attention type is unspecified
+    Unspecified = -1,
+    /// Causal attention
+    Causal = 0,
+    /// Non-causal attention
+    NonCausal = 1,
+}
+
+impl From<i32> for LlamaAttentionType {
+    fn from(value: i32) -> Self {
+        match value {
+            0 => Self::Causal,
+            1 => Self::NonCausal,
+            _ => Self::Unspecified,
+        }
+    }
+}
+
+impl From<LlamaAttentionType> for i32 {
+    fn from(value: LlamaAttentionType) -> Self {
+        match value {
+            LlamaAttentionType::Causal => 0,
+            LlamaAttentionType::NonCausal => 1,
+            LlamaAttentionType::Unspecified => -1,
+        }
+    }
+}
+
 /// A rusty wrapper around `ggml_type` for KV cache types.
 #[allow(non_camel_case_types, missing_docs)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -738,6 +770,233 @@ impl LlamaContextParams {
     pub fn type_v(&self) -> KvCacheType {
         KvCacheType::from(self.context_params.type_v)
     }
+
+    /// Set the attention type
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use llama_cpp_bindings::context::params::{LlamaContextParams, LlamaAttentionType};
+    /// let params = LlamaContextParams::default()
+    ///     .with_attention_type(LlamaAttentionType::NonCausal);
+    /// assert_eq!(params.attention_type(), LlamaAttentionType::NonCausal);
+    /// ```
+    #[must_use]
+    pub fn with_attention_type(mut self, attention_type: LlamaAttentionType) -> Self {
+        self.context_params.attention_type = i32::from(attention_type);
+        self
+    }
+
+    /// Get the attention type
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let params = llama_cpp_bindings::context::params::LlamaContextParams::default();
+    /// assert_eq!(params.attention_type(), llama_cpp_bindings::context::params::LlamaAttentionType::Unspecified);
+    /// ```
+    #[must_use]
+    pub fn attention_type(&self) -> LlamaAttentionType {
+        LlamaAttentionType::from(self.context_params.attention_type)
+    }
+
+    /// Set the `YaRN` extrapolation factor
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use llama_cpp_bindings::context::params::LlamaContextParams;
+    /// let params = LlamaContextParams::default()
+    ///     .with_yarn_ext_factor(1.0);
+    /// assert!((params.yarn_ext_factor() - 1.0).abs() < f32::EPSILON);
+    /// ```
+    #[must_use]
+    pub const fn with_yarn_ext_factor(mut self, yarn_ext_factor: f32) -> Self {
+        self.context_params.yarn_ext_factor = yarn_ext_factor;
+        self
+    }
+
+    /// Get the `YaRN` extrapolation factor
+    #[must_use]
+    pub const fn yarn_ext_factor(&self) -> f32 {
+        self.context_params.yarn_ext_factor
+    }
+
+    /// Set the `YaRN` attention factor
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use llama_cpp_bindings::context::params::LlamaContextParams;
+    /// let params = LlamaContextParams::default()
+    ///     .with_yarn_attn_factor(2.0);
+    /// assert!((params.yarn_attn_factor() - 2.0).abs() < f32::EPSILON);
+    /// ```
+    #[must_use]
+    pub const fn with_yarn_attn_factor(mut self, yarn_attn_factor: f32) -> Self {
+        self.context_params.yarn_attn_factor = yarn_attn_factor;
+        self
+    }
+
+    /// Get the `YaRN` attention factor
+    #[must_use]
+    pub const fn yarn_attn_factor(&self) -> f32 {
+        self.context_params.yarn_attn_factor
+    }
+
+    /// Set the `YaRN` low correction dim
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use llama_cpp_bindings::context::params::LlamaContextParams;
+    /// let params = LlamaContextParams::default()
+    ///     .with_yarn_beta_fast(32.0);
+    /// assert!((params.yarn_beta_fast() - 32.0).abs() < f32::EPSILON);
+    /// ```
+    #[must_use]
+    pub const fn with_yarn_beta_fast(mut self, yarn_beta_fast: f32) -> Self {
+        self.context_params.yarn_beta_fast = yarn_beta_fast;
+        self
+    }
+
+    /// Get the `YaRN` low correction dim
+    #[must_use]
+    pub const fn yarn_beta_fast(&self) -> f32 {
+        self.context_params.yarn_beta_fast
+    }
+
+    /// Set the `YaRN` high correction dim
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use llama_cpp_bindings::context::params::LlamaContextParams;
+    /// let params = LlamaContextParams::default()
+    ///     .with_yarn_beta_slow(1.0);
+    /// assert!((params.yarn_beta_slow() - 1.0).abs() < f32::EPSILON);
+    /// ```
+    #[must_use]
+    pub const fn with_yarn_beta_slow(mut self, yarn_beta_slow: f32) -> Self {
+        self.context_params.yarn_beta_slow = yarn_beta_slow;
+        self
+    }
+
+    /// Get the `YaRN` high correction dim
+    #[must_use]
+    pub const fn yarn_beta_slow(&self) -> f32 {
+        self.context_params.yarn_beta_slow
+    }
+
+    /// Set the `YaRN` original context size
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use llama_cpp_bindings::context::params::LlamaContextParams;
+    /// let params = LlamaContextParams::default()
+    ///     .with_yarn_orig_ctx(4096);
+    /// assert_eq!(params.yarn_orig_ctx(), 4096);
+    /// ```
+    #[must_use]
+    pub const fn with_yarn_orig_ctx(mut self, yarn_orig_ctx: u32) -> Self {
+        self.context_params.yarn_orig_ctx = yarn_orig_ctx;
+        self
+    }
+
+    /// Get the `YaRN` original context size
+    #[must_use]
+    pub const fn yarn_orig_ctx(&self) -> u32 {
+        self.context_params.yarn_orig_ctx
+    }
+
+    /// Set the KV cache defragmentation threshold
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use llama_cpp_bindings::context::params::LlamaContextParams;
+    /// let params = LlamaContextParams::default()
+    ///     .with_defrag_thold(0.1);
+    /// assert!((params.defrag_thold() - 0.1).abs() < f32::EPSILON);
+    /// ```
+    #[must_use]
+    pub const fn with_defrag_thold(mut self, defrag_thold: f32) -> Self {
+        self.context_params.defrag_thold = defrag_thold;
+        self
+    }
+
+    /// Get the KV cache defragmentation threshold
+    #[must_use]
+    pub const fn defrag_thold(&self) -> f32 {
+        self.context_params.defrag_thold
+    }
+
+    /// Set whether performance timings are disabled
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use llama_cpp_bindings::context::params::LlamaContextParams;
+    /// let params = LlamaContextParams::default()
+    ///     .with_no_perf(true);
+    /// assert!(params.no_perf());
+    /// ```
+    #[must_use]
+    pub const fn with_no_perf(mut self, no_perf: bool) -> Self {
+        self.context_params.no_perf = no_perf;
+        self
+    }
+
+    /// Get whether performance timings are disabled
+    #[must_use]
+    pub const fn no_perf(&self) -> bool {
+        self.context_params.no_perf
+    }
+
+    /// Set whether to offload ops to GPU
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use llama_cpp_bindings::context::params::LlamaContextParams;
+    /// let params = LlamaContextParams::default()
+    ///     .with_op_offload(false);
+    /// assert!(!params.op_offload());
+    /// ```
+    #[must_use]
+    pub const fn with_op_offload(mut self, op_offload: bool) -> Self {
+        self.context_params.op_offload = op_offload;
+        self
+    }
+
+    /// Get whether ops are offloaded to GPU
+    #[must_use]
+    pub const fn op_offload(&self) -> bool {
+        self.context_params.op_offload
+    }
+
+    /// Set whether to use a unified KV cache buffer across input sequences
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use llama_cpp_bindings::context::params::LlamaContextParams;
+    /// let params = LlamaContextParams::default()
+    ///     .with_kv_unified(true);
+    /// assert!(params.kv_unified());
+    /// ```
+    #[must_use]
+    pub const fn with_kv_unified(mut self, kv_unified: bool) -> Self {
+        self.context_params.kv_unified = kv_unified;
+        self
+    }
+
+    /// Get whether a unified KV cache buffer is used across input sequences
+    #[must_use]
+    pub const fn kv_unified(&self) -> bool {
+        self.context_params.kv_unified
+    }
 }
 
 /// Default parameters for `LlamaContext`. (as defined in llama.cpp by `llama_context_default_params`)
@@ -757,7 +1016,7 @@ impl Default for LlamaContextParams {
 
 #[cfg(test)]
 mod tests {
-    use super::{KvCacheType, LlamaPoolingType, RopeScalingType};
+    use super::{KvCacheType, LlamaAttentionType, LlamaPoolingType, RopeScalingType};
 
     #[test]
     fn rope_scaling_type_unknown_defaults_to_unspecified() {
@@ -1126,5 +1385,132 @@ mod tests {
             params.flash_attention_policy(),
             llama_cpp_bindings_sys::LLAMA_FLASH_ATTN_TYPE_DISABLED
         );
+    }
+
+    #[test]
+    fn attention_type_unknown_defaults_to_unspecified() {
+        assert_eq!(
+            LlamaAttentionType::from(99),
+            LlamaAttentionType::Unspecified
+        );
+        assert_eq!(
+            LlamaAttentionType::from(-50),
+            LlamaAttentionType::Unspecified
+        );
+    }
+
+    #[test]
+    fn attention_type_roundtrip_all_variants() {
+        for (raw, expected) in [
+            (-1, LlamaAttentionType::Unspecified),
+            (0, LlamaAttentionType::Causal),
+            (1, LlamaAttentionType::NonCausal),
+        ] {
+            let from_raw = LlamaAttentionType::from(raw);
+            assert_eq!(from_raw, expected);
+
+            let back_to_raw: i32 = from_raw.into();
+            assert_eq!(back_to_raw, raw);
+        }
+    }
+
+    #[test]
+    fn with_attention_type_causal() {
+        let params =
+            super::LlamaContextParams::default().with_attention_type(LlamaAttentionType::Causal);
+
+        assert_eq!(params.attention_type(), LlamaAttentionType::Causal);
+    }
+
+    #[test]
+    fn with_attention_type_non_causal() {
+        let params =
+            super::LlamaContextParams::default().with_attention_type(LlamaAttentionType::NonCausal);
+
+        assert_eq!(params.attention_type(), LlamaAttentionType::NonCausal);
+    }
+
+    #[test]
+    fn with_yarn_ext_factor_sets_value() {
+        let params = super::LlamaContextParams::default().with_yarn_ext_factor(1.5);
+
+        assert!((params.yarn_ext_factor() - 1.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn with_yarn_attn_factor_sets_value() {
+        let params = super::LlamaContextParams::default().with_yarn_attn_factor(2.0);
+
+        assert!((params.yarn_attn_factor() - 2.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn with_yarn_beta_fast_sets_value() {
+        let params = super::LlamaContextParams::default().with_yarn_beta_fast(32.0);
+
+        assert!((params.yarn_beta_fast() - 32.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn with_yarn_beta_slow_sets_value() {
+        let params = super::LlamaContextParams::default().with_yarn_beta_slow(1.0);
+
+        assert!((params.yarn_beta_slow() - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn with_yarn_orig_ctx_sets_value() {
+        let params = super::LlamaContextParams::default().with_yarn_orig_ctx(4096);
+
+        assert_eq!(params.yarn_orig_ctx(), 4096);
+    }
+
+    #[test]
+    fn with_defrag_thold_sets_value() {
+        let params = super::LlamaContextParams::default().with_defrag_thold(0.1);
+
+        assert!((params.defrag_thold() - 0.1).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn with_no_perf_enables() {
+        let params = super::LlamaContextParams::default().with_no_perf(true);
+
+        assert!(params.no_perf());
+    }
+
+    #[test]
+    fn with_no_perf_disables() {
+        let params = super::LlamaContextParams::default().with_no_perf(false);
+
+        assert!(!params.no_perf());
+    }
+
+    #[test]
+    fn with_op_offload_enables() {
+        let params = super::LlamaContextParams::default().with_op_offload(true);
+
+        assert!(params.op_offload());
+    }
+
+    #[test]
+    fn with_op_offload_disables() {
+        let params = super::LlamaContextParams::default().with_op_offload(false);
+
+        assert!(!params.op_offload());
+    }
+
+    #[test]
+    fn with_kv_unified_enables() {
+        let params = super::LlamaContextParams::default().with_kv_unified(true);
+
+        assert!(params.kv_unified());
+    }
+
+    #[test]
+    fn with_kv_unified_disables() {
+        let params = super::LlamaContextParams::default().with_kv_unified(false);
+
+        assert!(!params.kv_unified());
     }
 }

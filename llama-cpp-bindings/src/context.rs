@@ -33,7 +33,12 @@ const fn check_lora_remove_result(err_code: i32) -> Result<(), LlamaLoraAdapterR
 }
 
 pub mod kv_cache;
+pub mod llama_state_seq_flags;
+pub mod load_seq_state_error;
+pub mod load_session_error;
 pub mod params;
+pub mod save_seq_state_error;
+pub mod save_session_error;
 pub mod session;
 
 /// Safe wrapper around `llama_context`.
@@ -385,6 +390,11 @@ impl<'model> LlamaContext<'model> {
 
         tracing::debug!("Remove lora adapter");
         Ok(())
+    }
+
+    /// Print a breakdown of per-device memory use to the default logger.
+    pub fn print_memory_breakdown(&self) {
+        unsafe { llama_cpp_bindings_sys::llama_memory_breakdown_print(self.context.as_ptr()) }
     }
 }
 

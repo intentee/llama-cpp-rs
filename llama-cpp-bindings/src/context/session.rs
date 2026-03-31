@@ -1,9 +1,14 @@
 //! utilities for working with session files
 
 use crate::context::LlamaContext;
+use crate::context::llama_state_seq_flags::LlamaStateSeqFlags;
+use crate::context::load_seq_state_error::LoadSeqStateError;
+use crate::context::load_session_error::LoadSessionError;
+use crate::context::save_seq_state_error::SaveSeqStateError;
+use crate::context::save_session_error::SaveSessionError;
 use crate::token::LlamaToken;
-use std::ffi::{CString, NulError};
-use std::path::{Path, PathBuf};
+use std::ffi::CString;
+use std::path::Path;
 
 fn process_session_load_result(
     success: bool,
@@ -41,88 +46,6 @@ fn process_seq_load_result(
     unsafe { tokens.set_len(n_out) };
 
     Ok((tokens, bytes_read))
-}
-
-/// Failed to save a sequence state file
-#[derive(Debug, Eq, PartialEq, thiserror::Error)]
-pub enum SaveSeqStateError {
-    /// llama.cpp failed to save the sequence state file
-    #[error("Failed to save sequence state file")]
-    FailedToSave,
-
-    /// null byte in string
-    #[error("null byte in string {0}")]
-    NullError(#[from] NulError),
-
-    /// failed to convert path to str
-    #[error("failed to convert path {0} to str")]
-    PathToStrError(PathBuf),
-}
-
-/// Failed to load a sequence state file
-#[derive(Debug, Eq, PartialEq, thiserror::Error)]
-pub enum LoadSeqStateError {
-    /// llama.cpp failed to load the sequence state file
-    #[error("Failed to load sequence state file")]
-    FailedToLoad,
-
-    /// null byte in string
-    #[error("null byte in string {0}")]
-    NullError(#[from] NulError),
-
-    /// failed to convert path to str
-    #[error("failed to convert path {0} to str")]
-    PathToStrError(PathBuf),
-
-    /// Insufficient max length
-    #[error("max_length is not large enough to hold {n_out} (was {max_tokens})")]
-    InsufficientMaxLength {
-        /// The length of the loaded sequence
-        n_out: usize,
-        /// The maximum length
-        max_tokens: usize,
-    },
-}
-
-/// Failed to save a Session file
-#[derive(Debug, Eq, PartialEq, thiserror::Error)]
-pub enum SaveSessionError {
-    /// llama.cpp failed to save the session file
-    #[error("Failed to save session file")]
-    FailedToSave,
-
-    /// null byte in string
-    #[error("null byte in string {0}")]
-    NullError(#[from] NulError),
-
-    /// failed to convert path to str
-    #[error("failed to convert path {0} to str")]
-    PathToStrError(PathBuf),
-}
-
-/// Failed to load a Session file
-#[derive(Debug, Eq, PartialEq, thiserror::Error)]
-pub enum LoadSessionError {
-    /// llama.cpp failed to load the session file
-    #[error("Failed to load session file")]
-    FailedToLoad,
-
-    /// null byte in string
-    #[error("null byte in string {0}")]
-    NullError(#[from] NulError),
-
-    /// failed to convert path to str
-    #[error("failed to convert path {0} to str")]
-    PathToStrError(PathBuf),
-
-    /// Insufficient max length
-    #[error("max_length is not large enough to hold {n_out} (was {max_tokens})")]
-    InsufficientMaxLength {
-        /// The length of the session file
-        n_out: usize,
-        /// The maximum length
-        max_tokens: usize,
-    },
 }
 
 impl LlamaContext<'_> {
@@ -317,21 +240,30 @@ impl LlamaContext<'_> {
     /// and `kv_cache`) - will often be smaller after compacting tokens
     #[must_use]
     pub fn get_state_size(&self) -> usize {
-        unsafe { llama_cpp_bindings_sys::llama_get_state_size(self.context.as_ptr()) }
+        unsafe { llama_cpp_bindings_sys::llama_state_get_size(self.context.as_ptr()) }
     }
 
-    /// Copies the state to the specified destination address.
+    /// Copies the state to the specified destination buffer.
     ///
-    /// Returns the number of bytes copied
+    /// Use [`get_state_size`](Self::get_state_size) to determine the required buffer size.
+    ///
+    /// Returns the number of bytes copied.
     ///
     /// # Safety
     ///
-    /// Destination needs to have allocated enough memory.
-    pub unsafe fn copy_state_data(&self, dest: *mut u8) -> usize {
-        unsafe { llama_cpp_bindings_sys::llama_copy_state_data(self.context.as_ptr(), dest) }
+    /// The `dest` buffer must be large enough to hold the complete state data.
+    pub unsafe fn copy_state_data(&self, dest: &mut [u8]) -> usize {
+        unsafe {
+            llama_cpp_bindings_sys::llama_state_get_data(
+                self.context.as_ptr(),
+                dest.as_mut_ptr(),
+                dest.len(),
+            )
+        }
     }
 
-    /// Set the state reading from the specified address.
+    /// Set the state reading from the specified buffer.
+    ///
     /// Returns the number of bytes read.
     ///
     /// # Safety
@@ -340,7 +272,80 @@ impl LlamaContext<'_> {
     /// on a compatible context (same model and parameters). Passing arbitrary or corrupted bytes
     /// will lead to undefined behavior.
     pub unsafe fn set_state_data(&mut self, src: &[u8]) -> usize {
-        unsafe { llama_cpp_bindings_sys::llama_set_state_data(self.context.as_ptr(), src.as_ptr()) }
+        unsafe {
+            llama_cpp_bindings_sys::llama_state_set_data(
+                self.context.as_ptr(),
+                src.as_ptr(),
+                src.len(),
+            )
+        }
+    }
+
+    /// Get the size of the state data for a specific sequence, with extended flags.
+    ///
+    /// Useful for hybrid/recurrent models where partial state (e.g., only SSM state)
+    /// may be saved or restored.
+    #[must_use]
+    pub fn state_seq_get_size_ext(&self, seq_id: i32, flags: &LlamaStateSeqFlags) -> usize {
+        unsafe {
+            llama_cpp_bindings_sys::llama_state_seq_get_size_ext(
+                self.context.as_ptr(),
+                seq_id,
+                flags.bits(),
+            )
+        }
+    }
+
+    /// Copy state data for a specific sequence into `dest`, with extended flags.
+    ///
+    /// Use [`state_seq_get_size_ext`](Self::state_seq_get_size_ext) to determine the required
+    /// buffer size before calling this method.
+    ///
+    /// Returns the number of bytes written.
+    ///
+    /// # Safety
+    ///
+    /// The `dest` buffer must be large enough to hold the complete state data.
+    pub unsafe fn state_seq_get_data_ext(
+        &self,
+        dest: &mut [u8],
+        seq_id: i32,
+        flags: &LlamaStateSeqFlags,
+    ) -> usize {
+        unsafe {
+            llama_cpp_bindings_sys::llama_state_seq_get_data_ext(
+                self.context.as_ptr(),
+                dest.as_mut_ptr(),
+                dest.len(),
+                seq_id,
+                flags.bits(),
+            )
+        }
+    }
+
+    /// Restore state data for a specific sequence from `src`, with extended flags.
+    ///
+    /// Returns the number of bytes read.
+    ///
+    /// # Safety
+    ///
+    /// The `src` buffer must contain data previously obtained from
+    /// [`state_seq_get_data_ext`](Self::state_seq_get_data_ext) on a compatible context.
+    pub unsafe fn state_seq_set_data_ext(
+        &mut self,
+        src: &[u8],
+        dest_seq_id: i32,
+        flags: &LlamaStateSeqFlags,
+    ) -> usize {
+        unsafe {
+            llama_cpp_bindings_sys::llama_state_seq_set_data_ext(
+                self.context.as_ptr(),
+                src.as_ptr(),
+                src.len(),
+                dest_seq_id,
+                flags.bits(),
+            )
+        }
     }
 }
 
@@ -348,9 +353,10 @@ impl LlamaContext<'_> {
 mod unit_tests {
     use crate::token::LlamaToken;
 
-    use super::{
-        LoadSeqStateError, LoadSessionError, process_seq_load_result, process_session_load_result,
-    };
+    use crate::context::load_seq_state_error::LoadSeqStateError;
+    use crate::context::load_session_error::LoadSessionError;
+
+    use super::{process_seq_load_result, process_session_load_result};
 
     #[test]
     fn session_load_success_within_bounds() {
@@ -499,7 +505,7 @@ mod tests {
 
         let state_size = context.get_state_size();
         let mut state_data = vec![0u8; state_size];
-        let bytes_copied = unsafe { context.copy_state_data(state_data.as_mut_ptr()) };
+        let bytes_copied = unsafe { context.copy_state_data(&mut state_data) };
         assert!(bytes_copied > 0);
 
         let bytes_read = unsafe { context.set_state_data(&state_data) };

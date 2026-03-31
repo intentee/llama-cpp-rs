@@ -411,6 +411,14 @@ impl LlamaModel {
             .expect("llama.cpp returns a positive value for n_head_kv")
     }
 
+    /// Returns whether the model is a hybrid network (Jamba, Granite, Qwen3xx, etc.)
+    ///
+    /// Hybrid models have both attention layers and recurrent/SSM layers.
+    #[must_use]
+    pub fn is_hybrid(&self) -> bool {
+        unsafe { llama_cpp_bindings_sys::llama_model_is_hybrid(self.model.as_ptr()) }
+    }
+
     /// Get metadata value as a string by key name
     ///
     /// # Errors
