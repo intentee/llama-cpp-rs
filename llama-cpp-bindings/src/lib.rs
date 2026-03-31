@@ -12,6 +12,9 @@
 
 pub mod context;
 pub mod error;
+pub mod gguf_context;
+pub mod gguf_context_error;
+pub mod gguf_type;
 pub mod llama_backend;
 pub mod llama_backend_device;
 pub mod llama_backend_numa_strategy;

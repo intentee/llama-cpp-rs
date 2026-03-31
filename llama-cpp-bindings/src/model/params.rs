@@ -285,6 +285,47 @@ impl LlamaModelParams {
         self
     }
 
+    /// sets `use_mmap`
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use llama_cpp_bindings::model::params::LlamaModelParams;
+    /// let params = LlamaModelParams::default().with_use_mmap(false);
+    /// assert!(!params.use_mmap());
+    /// ```
+    #[must_use]
+    pub const fn with_use_mmap(mut self, use_mmap: bool) -> Self {
+        self.params.use_mmap = use_mmap;
+        self
+    }
+
+    /// Get `no_alloc`
+    #[must_use]
+    pub const fn no_alloc(&self) -> bool {
+        self.params.no_alloc
+    }
+
+    /// Set `no_alloc`. When enabled, tensor data is not allocated.
+    /// Incompatible with `use_mmap`, so enabling this also disables mmap.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use llama_cpp_bindings::model::params::LlamaModelParams;
+    /// let params = LlamaModelParams::default().with_no_alloc(true);
+    /// assert!(params.no_alloc());
+    /// assert!(!params.use_mmap());
+    /// ```
+    #[must_use]
+    pub const fn with_no_alloc(mut self, no_alloc: bool) -> Self {
+        self.params.no_alloc = no_alloc;
+        if no_alloc {
+            self.params.use_mmap = false;
+        }
+        self
+    }
+
     /// sets `use_mlock`
     #[must_use]
     pub const fn with_use_mlock(mut self, use_mlock: bool) -> Self {
@@ -432,6 +473,51 @@ mod tests {
         let params = LlamaModelParams::default().with_vocab_only(false);
 
         assert!(!params.vocab_only());
+    }
+
+    #[test]
+    fn with_use_mmap_enables() {
+        let params = LlamaModelParams::default().with_use_mmap(true);
+
+        assert!(params.use_mmap());
+    }
+
+    #[test]
+    fn with_use_mmap_disables() {
+        let params = LlamaModelParams::default().with_use_mmap(false);
+
+        assert!(!params.use_mmap());
+    }
+
+    #[test]
+    fn with_no_alloc_enables() {
+        let params = LlamaModelParams::default().with_no_alloc(true);
+
+        assert!(params.no_alloc());
+    }
+
+    #[test]
+    fn with_no_alloc_disables() {
+        let params = LlamaModelParams::default().with_no_alloc(false);
+
+        assert!(!params.no_alloc());
+    }
+
+    #[test]
+    fn with_no_alloc_true_disables_mmap() {
+        let params = LlamaModelParams::default()
+            .with_use_mmap(true)
+            .with_no_alloc(true);
+
+        assert!(params.no_alloc());
+        assert!(!params.use_mmap());
+    }
+
+    #[test]
+    fn default_no_alloc_is_false() {
+        let params = LlamaModelParams::default();
+
+        assert!(!params.no_alloc());
     }
 
     #[test]

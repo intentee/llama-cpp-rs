@@ -22,6 +22,10 @@ pub fn compile_mtmd(llama_src: &Path, target_os: &TargetOs) {
         build.flag("/std:c++17");
     }
 
+    if target_os.is_android() && cfg!(feature = "static-stdcxx") {
+        build.cpp_link_stdlib(None);
+    }
+
     let pattern = mtmd_src.join("**/*.cpp");
     let pattern_str = pattern.to_string_lossy();
 
