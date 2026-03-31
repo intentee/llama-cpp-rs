@@ -283,6 +283,7 @@ mod tests {
 
     #[test]
     fn from_audio_data_creates_valid_bitmap() {
+        #[allow(clippy::cast_precision_loss)]
         let audio_samples: Vec<f32> = (0..100).map(|index| (index as f32 * 0.1).sin()).collect();
         let bitmap = MtmdBitmap::from_audio_data(&audio_samples).unwrap();
 

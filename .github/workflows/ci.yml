@@ -21,7 +21,7 @@ jobs:
           toolchain: "1.92.0"
           components: rustfmt
 
-      - run: cargo fmt --all -- --check
+      - run: make fmt
 
   clippy:
     name: Clippy
@@ -41,7 +41,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - run: cargo clippy --workspace -- -D warnings
+      - run: make clippy
 
   test:
     name: Tests
@@ -60,4 +60,4 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - run: cargo test --workspace
+      - run: make test.unit

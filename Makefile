@@ -1,5 +1,6 @@
-CARGO_TEST_LLM_FLAGS = --lib -p llama-cpp-bindings --features tests_that_use_llms,mtmd -- --test-threads=1
-CARGO_COV_LLM_FLAGS = --lib --features tests_that_use_llms,mtmd -p llama-cpp-bindings
+FEATURES = mtmd,sampler,llguidance
+CARGO_TEST_LLM_FLAGS = --lib -p llama-cpp-bindings --features tests_that_use_llms,$(FEATURES) -- --test-threads=1
+CARGO_COV_LLM_FLAGS = --lib --features tests_that_use_llms,$(FEATURES) -p llama-cpp-bindings
 
 QWEN3_5_0_8B_ENV = \
 	LLAMA_TEST_HF_REPO=unsloth/Qwen3.5-0.8B-GGUF \
@@ -12,7 +13,7 @@ QWEN3_5_0_8B_ENV = \
 
 .PHONY: test.unit
 test.unit: clippy
-	cargo test --lib -p llama-cpp-bindings
+	cargo test --lib -p llama-cpp-bindings --features $(FEATURES)
 
 .PHONY: test.qwen3.5_0.8B
 test.qwen3.5_0.8B: clippy
@@ -42,8 +43,8 @@ test: test.unit test.llms
 
 .PHONY: fmt
 fmt:
-	cargo fmt --check
+	cargo fmt --all --check
 
 .PHONY: clippy
 clippy:
-	cargo clippy --all-targets -p llama-cpp-bindings
+	cargo clippy --all-targets -p llama-cpp-bindings --features $(FEATURES) -- -D warnings

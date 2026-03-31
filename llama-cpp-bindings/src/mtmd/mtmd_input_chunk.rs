@@ -11,7 +11,7 @@ use super::mtmd_input_chunk_type::{MtmdInputChunkType, MtmdInputChunkTypeError};
 ///
 /// `tokens_ptr` must point to at least `n_tokens` valid `llama_token` values
 /// that remain valid for the lifetime `'chunk`.
-unsafe fn tokens_from_raw_ptr<'chunk>(
+const unsafe fn tokens_from_raw_ptr<'chunk>(
     tokens_ptr: *const llama_cpp_bindings_sys::llama_token,
     n_tokens: usize,
 ) -> Option<&'chunk [LlamaToken]> {
@@ -131,7 +131,7 @@ mod unit_tests {
     #[test]
     fn tokens_from_raw_ptr_returns_none_for_zero_count() {
         let token: llama_cpp_bindings_sys::llama_token = 42;
-        assert!(unsafe { tokens_from_raw_ptr(&token, 0) }.is_none());
+        assert!(unsafe { tokens_from_raw_ptr(&raw const token, 0) }.is_none());
     }
 
     #[test]

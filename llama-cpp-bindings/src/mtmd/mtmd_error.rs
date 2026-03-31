@@ -73,7 +73,7 @@ pub enum MtmdEvalError {
     /// Requested batch size exceeds the context's maximum batch size
     #[error("batch size {requested} exceeds context batch size {context_max}")]
     BatchSizeExceedsContextLimit {
-        /// The batch size requested in eval_chunks
+        /// The batch size requested in `eval_chunks`
         requested: i32,
         /// The maximum batch size configured on the context
         context_max: u32,
