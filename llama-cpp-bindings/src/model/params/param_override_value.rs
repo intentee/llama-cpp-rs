@@ -14,57 +14,64 @@ pub enum ParamOverrideValue {
 impl ParamOverrideValue {
     /// Returns the FFI tag corresponding to this override value variant.
     #[must_use]
-    pub fn tag(&self) -> llama_cpp_bindings_sys::llama_model_kv_override_type {
+    pub const fn tag(&self) -> llama_cpp_bindings_sys::llama_model_kv_override_type {
         match self {
-            ParamOverrideValue::Bool(_) => llama_cpp_bindings_sys::LLAMA_KV_OVERRIDE_TYPE_BOOL,
-            ParamOverrideValue::Float(_) => llama_cpp_bindings_sys::LLAMA_KV_OVERRIDE_TYPE_FLOAT,
-            ParamOverrideValue::Int(_) => llama_cpp_bindings_sys::LLAMA_KV_OVERRIDE_TYPE_INT,
-            ParamOverrideValue::Str(_) => llama_cpp_bindings_sys::LLAMA_KV_OVERRIDE_TYPE_STR,
+            Self::Bool(_) => llama_cpp_bindings_sys::LLAMA_KV_OVERRIDE_TYPE_BOOL,
+            Self::Float(_) => llama_cpp_bindings_sys::LLAMA_KV_OVERRIDE_TYPE_FLOAT,
+            Self::Int(_) => llama_cpp_bindings_sys::LLAMA_KV_OVERRIDE_TYPE_INT,
+            Self::Str(_) => llama_cpp_bindings_sys::LLAMA_KV_OVERRIDE_TYPE_STR,
         }
     }
 
     /// Returns the FFI union value for this override.
     #[must_use]
-    pub fn value(&self) -> llama_cpp_bindings_sys::llama_model_kv_override__bindgen_ty_1 {
+    pub const fn value(&self) -> llama_cpp_bindings_sys::llama_model_kv_override__bindgen_ty_1 {
         match self {
-            ParamOverrideValue::Bool(value) => {
+            Self::Bool(value) => {
                 llama_cpp_bindings_sys::llama_model_kv_override__bindgen_ty_1 { val_bool: *value }
             }
-            ParamOverrideValue::Float(value) => {
+            Self::Float(value) => {
                 llama_cpp_bindings_sys::llama_model_kv_override__bindgen_ty_1 { val_f64: *value }
             }
-            ParamOverrideValue::Int(value) => {
+            Self::Int(value) => {
                 llama_cpp_bindings_sys::llama_model_kv_override__bindgen_ty_1 { val_i64: *value }
             }
-            ParamOverrideValue::Str(c_string) => {
+            Self::Str(c_string) => {
                 llama_cpp_bindings_sys::llama_model_kv_override__bindgen_ty_1 { val_str: *c_string }
             }
         }
     }
 }
 
-impl From<&llama_cpp_bindings_sys::llama_model_kv_override> for ParamOverrideValue {
-    fn from(
+/// Unknown KV override tag from the FFI layer.
+#[derive(Debug, thiserror::Error)]
+#[error("unknown KV override tag: {0}")]
+pub struct UnknownKvOverrideTag(pub llama_cpp_bindings_sys::llama_model_kv_override_type);
+
+impl TryFrom<&llama_cpp_bindings_sys::llama_model_kv_override> for ParamOverrideValue {
+    type Error = UnknownKvOverrideTag;
+
+    fn try_from(
         llama_cpp_bindings_sys::llama_model_kv_override {
             key: _,
             tag,
             __bindgen_anon_1,
         }: &llama_cpp_bindings_sys::llama_model_kv_override,
-    ) -> Self {
+    ) -> Result<Self, Self::Error> {
         match *tag {
             llama_cpp_bindings_sys::LLAMA_KV_OVERRIDE_TYPE_INT => {
-                ParamOverrideValue::Int(unsafe { __bindgen_anon_1.val_i64 })
+                Ok(Self::Int(unsafe { __bindgen_anon_1.val_i64 }))
             }
             llama_cpp_bindings_sys::LLAMA_KV_OVERRIDE_TYPE_FLOAT => {
-                ParamOverrideValue::Float(unsafe { __bindgen_anon_1.val_f64 })
+                Ok(Self::Float(unsafe { __bindgen_anon_1.val_f64 }))
             }
             llama_cpp_bindings_sys::LLAMA_KV_OVERRIDE_TYPE_BOOL => {
-                ParamOverrideValue::Bool(unsafe { __bindgen_anon_1.val_bool })
+                Ok(Self::Bool(unsafe { __bindgen_anon_1.val_bool }))
             }
             llama_cpp_bindings_sys::LLAMA_KV_OVERRIDE_TYPE_STR => {
-                ParamOverrideValue::Str(unsafe { __bindgen_anon_1.val_str })
+                Ok(Self::Str(unsafe { __bindgen_anon_1.val_str }))
             }
-            _ => unreachable!("Unknown tag of {tag}"),
+            unknown_tag => Err(UnknownKvOverrideTag(unknown_tag)),
         }
     }
 }
@@ -150,7 +157,7 @@ mod tests {
             },
         };
 
-        let value = ParamOverrideValue::from(&ffi_override);
+        let value = ParamOverrideValue::try_from(&ffi_override).unwrap();
 
         assert_eq!(value, ParamOverrideValue::Int(123));
     }
@@ -165,7 +172,7 @@ mod tests {
             },
         };
 
-        let value = ParamOverrideValue::from(&ffi_override);
+        let value = ParamOverrideValue::try_from(&ffi_override).unwrap();
 
         assert_eq!(value, ParamOverrideValue::Float(1.5));
     }
@@ -180,8 +187,54 @@ mod tests {
             },
         };
 
-        let value = ParamOverrideValue::from(&ffi_override);
+        let value = ParamOverrideValue::try_from(&ffi_override).unwrap();
 
         assert_eq!(value, ParamOverrideValue::Bool(false));
+    }
+
+    #[test]
+    fn value_str_roundtrip() {
+        let mut str_data = [0i8; 128];
+        str_data[0] = b'h'.cast_signed();
+        str_data[1] = b'i'.cast_signed();
+
+        let value = ParamOverrideValue::Str(str_data);
+        let ffi_value = value.value();
+        let result = unsafe { ffi_value.val_str };
+
+        assert_eq!(result[0], b'h'.cast_signed());
+        assert_eq!(result[1], b'i'.cast_signed());
+    }
+
+    #[test]
+    fn from_ffi_override_str() {
+        let mut str_data = [0i8; 128];
+        str_data[0] = b'a'.cast_signed();
+        str_data[1] = b'b'.cast_signed();
+
+        let ffi_override = llama_cpp_bindings_sys::llama_model_kv_override {
+            key: [0; 128],
+            tag: llama_cpp_bindings_sys::LLAMA_KV_OVERRIDE_TYPE_STR,
+            __bindgen_anon_1: llama_cpp_bindings_sys::llama_model_kv_override__bindgen_ty_1 {
+                val_str: str_data,
+            },
+        };
+
+        let value = ParamOverrideValue::try_from(&ffi_override).unwrap();
+
+        assert_eq!(value, ParamOverrideValue::Str(str_data));
+    }
+
+    #[test]
+    fn unknown_tag_returns_error() {
+        let ffi_override = llama_cpp_bindings_sys::llama_model_kv_override {
+            key: [0; 128],
+            tag: 9999,
+            __bindgen_anon_1: unsafe { std::mem::zeroed() },
+        };
+
+        let result = ParamOverrideValue::try_from(&ffi_override);
+
+        assert!(result.is_err());
     }
 }

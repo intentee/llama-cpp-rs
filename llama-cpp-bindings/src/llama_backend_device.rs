@@ -15,6 +15,22 @@ pub enum LlamaBackendDeviceType {
     Unknown,
 }
 
+const fn device_type_from_raw(
+    raw_type: llama_cpp_bindings_sys::ggml_backend_dev_type,
+) -> LlamaBackendDeviceType {
+    match raw_type {
+        llama_cpp_bindings_sys::GGML_BACKEND_DEVICE_TYPE_CPU => LlamaBackendDeviceType::Cpu,
+        llama_cpp_bindings_sys::GGML_BACKEND_DEVICE_TYPE_ACCEL => {
+            LlamaBackendDeviceType::Accelerator
+        }
+        llama_cpp_bindings_sys::GGML_BACKEND_DEVICE_TYPE_GPU => LlamaBackendDeviceType::Gpu,
+        llama_cpp_bindings_sys::GGML_BACKEND_DEVICE_TYPE_IGPU => {
+            LlamaBackendDeviceType::IntegratedGpu
+        }
+        _ => LlamaBackendDeviceType::Unknown,
+    }
+}
+
 /// A ggml backend device
 ///
 /// The index is can be used from `LlamaModelParams::with_devices` to select specific devices.
@@ -68,17 +84,7 @@ pub fn list_llama_ggml_backend_devices() -> Vec<LlamaBackendDevice> {
         let backend = cstr_to_string(backend_name);
         let memory_total = props.memory_total;
         let memory_free = props.memory_free;
-        let device_type = match props.type_ {
-            llama_cpp_bindings_sys::GGML_BACKEND_DEVICE_TYPE_CPU => LlamaBackendDeviceType::Cpu,
-            llama_cpp_bindings_sys::GGML_BACKEND_DEVICE_TYPE_ACCEL => {
-                LlamaBackendDeviceType::Accelerator
-            }
-            llama_cpp_bindings_sys::GGML_BACKEND_DEVICE_TYPE_GPU => LlamaBackendDeviceType::Gpu,
-            llama_cpp_bindings_sys::GGML_BACKEND_DEVICE_TYPE_IGPU => {
-                LlamaBackendDeviceType::IntegratedGpu
-            }
-            _ => LlamaBackendDeviceType::Unknown,
-        };
+        let device_type = device_type_from_raw(props.type_);
         devices.push(LlamaBackendDevice {
             index: device_index,
             name,
@@ -95,7 +101,7 @@ pub fn list_llama_ggml_backend_devices() -> Vec<LlamaBackendDevice> {
 
 #[cfg(test)]
 mod tests {
-    use super::cstr_to_string;
+    use super::{cstr_to_string, list_llama_ggml_backend_devices};
 
     #[test]
     fn cstr_to_string_with_null_returns_empty() {
@@ -109,5 +115,37 @@ mod tests {
         let result = cstr_to_string(c"hello".as_ptr());
 
         assert_eq!(result, "hello");
+    }
+
+    #[test]
+    fn list_devices_returns_at_least_one() {
+        let devices = list_llama_ggml_backend_devices();
+        assert!(!devices.is_empty());
+        assert_eq!(devices[0].index, 0);
+        assert!(!devices[0].name.is_empty());
+    }
+
+    #[test]
+    fn device_type_from_raw_all_variants() {
+        use super::LlamaBackendDeviceType;
+        use super::device_type_from_raw;
+
+        assert_eq!(
+            device_type_from_raw(llama_cpp_bindings_sys::GGML_BACKEND_DEVICE_TYPE_CPU),
+            LlamaBackendDeviceType::Cpu
+        );
+        assert_eq!(
+            device_type_from_raw(llama_cpp_bindings_sys::GGML_BACKEND_DEVICE_TYPE_ACCEL),
+            LlamaBackendDeviceType::Accelerator
+        );
+        assert_eq!(
+            device_type_from_raw(llama_cpp_bindings_sys::GGML_BACKEND_DEVICE_TYPE_GPU),
+            LlamaBackendDeviceType::Gpu
+        );
+        assert_eq!(
+            device_type_from_raw(llama_cpp_bindings_sys::GGML_BACKEND_DEVICE_TYPE_IGPU),
+            LlamaBackendDeviceType::IntegratedGpu
+        );
+        assert_eq!(device_type_from_raw(9999), LlamaBackendDeviceType::Unknown);
     }
 }

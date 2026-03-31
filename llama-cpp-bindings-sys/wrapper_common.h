@@ -69,6 +69,28 @@ llama_rs_status llama_rs_sampler_accept(struct llama_sampler * sampler, llama_to
 void llama_rs_chat_template_result_free(struct llama_rs_chat_template_result * result);
 void llama_rs_string_free(char * ptr);
 
+llama_pos llama_rs_memory_seq_pos_max(
+    struct llama_context * ctx,
+    llama_seq_id seq_id);
+
+llama_rs_status llama_rs_encode(
+    struct llama_context * ctx,
+    struct llama_batch batch);
+
+llama_rs_status llama_rs_memory_seq_add(
+    struct llama_context * ctx,
+    llama_seq_id seq_id,
+    llama_pos p0,
+    llama_pos p1,
+    llama_pos shift);
+
+llama_rs_status llama_rs_memory_seq_div(
+    struct llama_context * ctx,
+    llama_seq_id seq_id,
+    llama_pos p0,
+    llama_pos p1,
+    int d);
+
 #ifdef __cplusplus
 }
 #endif

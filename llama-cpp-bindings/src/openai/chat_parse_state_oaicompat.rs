@@ -5,6 +5,61 @@ use std::slice;
 
 use crate::{ChatParseError, status_is_ok, status_to_i32};
 
+const fn check_ffi_status(
+    status: llama_cpp_bindings_sys::llama_rs_status,
+) -> Result<(), ChatParseError> {
+    if status_is_ok(status) {
+        Ok(())
+    } else {
+        Err(ChatParseError::FfiError(status_to_i32(status)))
+    }
+}
+
+const fn check_not_null_with_count(
+    pointer: *const llama_cpp_bindings_sys::llama_rs_chat_msg_diff_oaicompat,
+    count: usize,
+) -> Result<(), ChatParseError> {
+    if count > 0 && pointer.is_null() {
+        Err(ChatParseError::NullResult)
+    } else {
+        Ok(())
+    }
+}
+
+const fn diffs_as_slice(
+    diffs_ptr: *const llama_cpp_bindings_sys::llama_rs_chat_msg_diff_oaicompat,
+    count: usize,
+) -> &'static [llama_cpp_bindings_sys::llama_rs_chat_msg_diff_oaicompat] {
+    if count == 0 {
+        &[]
+    } else {
+        unsafe { slice::from_raw_parts(diffs_ptr, count) }
+    }
+}
+
+const fn check_json_not_null(json_ptr: *const c_char) -> Result<(), ChatParseError> {
+    if json_ptr.is_null() {
+        Err(ChatParseError::NullResult)
+    } else {
+        Ok(())
+    }
+}
+
+fn handle_diff_json_error(
+    status: llama_cpp_bindings_sys::llama_rs_status,
+    json_ptr: *mut c_char,
+) -> Result<(), ChatParseError> {
+    if !status_is_ok(status) {
+        if !json_ptr.is_null() {
+            unsafe { llama_cpp_bindings_sys::llama_rs_string_free(json_ptr) };
+        }
+
+        return Err(ChatParseError::FfiError(status_to_i32(status)));
+    }
+
+    Ok(())
+}
+
 /// Streaming OpenAI-compatible parser state.
 #[derive(Debug)]
 pub struct ChatParseStateOaicompat {
@@ -17,6 +72,9 @@ impl ChatParseStateOaicompat {
     ///
     /// # Errors
     /// Returns an error if the FFI call fails or the result is null.
+    ///
+    /// # Panics
+    /// Panics if a JSON delta returned by llama.cpp is not valid UTF-8.
     pub fn update(
         &mut self,
         text_added: &str,
@@ -40,17 +98,10 @@ impl ChatParseStateOaicompat {
         };
 
         let result = {
-            if !status_is_ok(rc) {
-                return Err(ChatParseError::FfiError(status_to_i32(rc)));
-            }
-            if out_diffs_count > 0 && out_diffs.is_null() {
-                return Err(ChatParseError::NullResult);
-            }
-            let diffs = if out_diffs_count == 0 {
-                &[]
-            } else {
-                unsafe { slice::from_raw_parts(out_diffs, out_diffs_count) }
-            };
+            check_ffi_status(rc)?;
+            check_not_null_with_count(out_diffs, out_diffs_count)?;
+
+            let diffs = diffs_as_slice(out_diffs, out_diffs_count);
             let mut deltas = Vec::with_capacity(diffs.len());
 
             for diff in diffs {
@@ -61,19 +112,14 @@ impl ChatParseStateOaicompat {
                         &raw mut out_json,
                     )
                 };
-                if !status_is_ok(rc) {
-                    if !out_json.is_null() {
-                        unsafe { llama_cpp_bindings_sys::llama_rs_string_free(out_json) };
-                    }
+                handle_diff_json_error(rc, out_json)?;
+                check_json_not_null(out_json)?;
 
-                    return Err(ChatParseError::FfiError(status_to_i32(rc)));
-                }
-                if out_json.is_null() {
-                    return Err(ChatParseError::NullResult);
-                }
                 let bytes = unsafe { CStr::from_ptr(out_json) }.to_bytes().to_vec();
                 unsafe { llama_cpp_bindings_sys::llama_rs_string_free(out_json) };
-                deltas.push(String::from_utf8(bytes)?);
+                deltas.push(
+                    String::from_utf8(bytes).expect("JSON from llama.cpp should be valid UTF-8"),
+                );
             }
 
             Ok(deltas)
@@ -94,7 +140,95 @@ impl ChatParseStateOaicompat {
 impl Drop for ChatParseStateOaicompat {
     fn drop(&mut self) {
         unsafe {
-            llama_cpp_bindings_sys::llama_rs_chat_parse_state_free_oaicompat(self.state.as_ptr())
+            llama_cpp_bindings_sys::llama_rs_chat_parse_state_free_oaicompat(self.state.as_ptr());
         };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::model::chat_template_result::ChatTemplateResult;
+
+    fn content_only_template() -> ChatTemplateResult {
+        ChatTemplateResult::default()
+    }
+
+    #[test]
+    fn update_with_simple_text() {
+        let mut state = content_only_template().streaming_state_oaicompat().unwrap();
+        let deltas = state.update("Hello", true);
+        assert!(deltas.is_ok());
+    }
+
+    #[test]
+    fn update_null_byte_returns_error() {
+        let mut state = content_only_template().streaming_state_oaicompat().unwrap();
+        let result = state.update("hello\0world", true);
+        assert!(result.unwrap_err().to_string().contains("nul byte"));
+    }
+
+    #[test]
+    fn update_finalized_produces_deltas() {
+        let mut state = content_only_template().streaming_state_oaicompat().unwrap();
+        let deltas = state.update("Hello world", false).unwrap();
+
+        assert!(!deltas.is_empty());
+    }
+
+    #[test]
+    fn check_ffi_status_returns_error_for_invalid() {
+        let result =
+            super::check_ffi_status(llama_cpp_bindings_sys::LLAMA_RS_STATUS_INVALID_ARGUMENT);
+
+        assert!(result.unwrap_err().to_string().contains("ffi error"));
+    }
+
+    #[test]
+    fn check_not_null_with_count_returns_error() {
+        let result = super::check_not_null_with_count(std::ptr::null(), 1);
+
+        assert!(result.unwrap_err().to_string().contains("null result"));
+    }
+
+    #[test]
+    fn check_not_null_with_count_zero_is_ok() {
+        let result = super::check_not_null_with_count(std::ptr::null(), 0);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn check_json_not_null_returns_error() {
+        let result = super::check_json_not_null(std::ptr::null());
+
+        assert!(result.unwrap_err().to_string().contains("null result"));
+    }
+
+    #[test]
+    fn handle_diff_json_error_frees_and_returns_error() {
+        let result = super::handle_diff_json_error(
+            llama_cpp_bindings_sys::LLAMA_RS_STATUS_EXCEPTION,
+            std::ptr::null_mut(),
+        );
+
+        assert!(result.unwrap_err().to_string().contains("ffi error"));
+    }
+
+    #[test]
+    fn handle_diff_json_error_frees_non_null_pointer_on_error() {
+        let leaked_string = std::ffi::CString::new("test").unwrap().into_raw();
+        let result = super::handle_diff_json_error(
+            llama_cpp_bindings_sys::LLAMA_RS_STATUS_EXCEPTION,
+            leaked_string,
+        );
+
+        assert!(result.unwrap_err().to_string().contains("ffi error"));
+    }
+
+    #[test]
+    fn diffs_as_slice_returns_empty_for_zero_count() {
+        let result = super::diffs_as_slice(std::ptr::null(), 0);
+
+        assert!(result.is_empty());
     }
 }

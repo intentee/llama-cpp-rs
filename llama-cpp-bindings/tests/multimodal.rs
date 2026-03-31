@@ -1,7 +1,6 @@
 #![cfg(all(feature = "tests_that_use_llms", feature = "mtmd"))]
 
 use std::num::NonZeroU32;
-use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use llama_cpp_bindings::context::params::LlamaContextParams;
@@ -10,31 +9,12 @@ use llama_cpp_bindings::model::params::LlamaModelParams;
 use llama_cpp_bindings::model::{LlamaChatMessage, LlamaModel};
 use llama_cpp_bindings::mtmd::{MtmdBitmap, MtmdContext, MtmdContextParams, MtmdInputText};
 use llama_cpp_bindings::sampling::LlamaSampler;
-
-const HF_REPO: &str = "unsloth/Qwen3.5-2B-GGUF";
-const HF_MODEL: &str = "Qwen3.5-2B-Q4_K_M.gguf";
-const HF_MMPROJ: &str = "mmproj-F16.gguf";
-
-fn download_file(filename: &str) -> Result<std::path::PathBuf> {
-    let path = hf_hub::api::sync::ApiBuilder::new()
-        .with_progress(true)
-        .build()?
-        .model(HF_REPO.to_string())
-        .get(filename)?;
-
-    Ok(path)
-}
-
-fn fixtures_path(filename: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("fixtures")
-        .join(filename)
-}
+use llama_cpp_bindings::test_model;
 
 #[test]
 fn multimodal_vision_inference_produces_output() -> Result<()> {
-    let model_path = download_file(HF_MODEL)?;
-    let mmproj_path = download_file(HF_MMPROJ)?;
+    let model_path = test_model::download_model()?;
+    let mmproj_path = test_model::download_mmproj()?;
 
     let backend = LlamaBackend::init()?;
     let model_params = LlamaModelParams::default();
@@ -61,7 +41,7 @@ fn multimodal_vision_inference_produces_output() -> Result<()> {
         "model should support vision input"
     );
 
-    let image_path = fixtures_path("llamas.jpg");
+    let image_path = test_model::fixtures_dir().join("llamas.jpg");
     let image_path_str = image_path
         .to_str()
         .with_context(|| "image path is not valid UTF-8")?;

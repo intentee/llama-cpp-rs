@@ -89,15 +89,13 @@ impl Module {
 
 fn meta_for_level(
     level: llama_cpp_bindings_sys::ggml_log_level,
-) -> (&'static Metadata<'static>, &'static OverridableFields) {
+) -> Option<(&'static Metadata<'static>, &'static OverridableFields)> {
     match level {
-        llama_cpp_bindings_sys::GGML_LOG_LEVEL_DEBUG => (&DEBUG_META, &DEBUG_FIELDS),
-        llama_cpp_bindings_sys::GGML_LOG_LEVEL_INFO => (&INFO_META, &INFO_FIELDS),
-        llama_cpp_bindings_sys::GGML_LOG_LEVEL_WARN => (&WARN_META, &WARN_FIELDS),
-        llama_cpp_bindings_sys::GGML_LOG_LEVEL_ERROR => (&ERROR_META, &ERROR_FIELDS),
-        _ => {
-            unreachable!("Illegal log level to be called here")
-        }
+        llama_cpp_bindings_sys::GGML_LOG_LEVEL_DEBUG => Some((&DEBUG_META, &DEBUG_FIELDS)),
+        llama_cpp_bindings_sys::GGML_LOG_LEVEL_INFO => Some((&INFO_META, &INFO_FIELDS)),
+        llama_cpp_bindings_sys::GGML_LOG_LEVEL_WARN => Some((&WARN_META, &WARN_FIELDS)),
+        llama_cpp_bindings_sys::GGML_LOG_LEVEL_ERROR => Some((&ERROR_META, &ERROR_FIELDS)),
+        _ => None,
     }
 }
 
@@ -110,6 +108,7 @@ pub struct State {
 }
 
 impl State {
+    #[must_use]
     pub fn new(module: Module, options: LogOptions) -> Self {
         Self {
             options,
@@ -151,7 +150,16 @@ impl State {
             level
         };
 
-        let (meta, fields) = meta_for_level(effective_level);
+        let Some((meta, fields)) = meta_for_level(effective_level) else {
+            tracing::warn!(
+                level = effective_level,
+                text = text,
+                origin = "crate",
+                "generate_log called with unmapped log level"
+            );
+
+            return;
+        };
 
         tracing::dispatcher::get_default(|dispatcher| {
             dispatcher.event(&tracing::Event::new(
@@ -169,7 +177,12 @@ impl State {
         });
     }
 
-    /// Append more text to the previously buffered log. The text may or may not end with a newline.
+    /// Append more text to the previously buffered log.
+    ///
+    /// The text may or may not end with a newline.
+    ///
+    /// # Panics
+    /// Panics if the internal mutex is poisoned.
     pub fn cont_buffered_log(&self, text: &str) {
         let mut lock = self.buffered.lock().unwrap();
 
@@ -186,7 +199,7 @@ impl State {
             let level = self
                 .previous_level
                 .load(std::sync::atomic::Ordering::Acquire)
-                as llama_cpp_bindings_sys::ggml_log_level;
+                .cast_unsigned();
             tracing::warn!(
                 inferred_level = level,
                 text = text,
@@ -198,16 +211,17 @@ impl State {
     }
 
     /// Start buffering a message. Not the CONT log level and text is missing a newline.
+    ///
+    /// # Panics
+    /// Panics if the internal mutex is poisoned.
     pub fn buffer_non_cont(&self, level: llama_cpp_bindings_sys::ggml_log_level, text: &str) {
-        debug_assert!(!text.ends_with('\n'));
-        debug_assert_ne!(level, llama_cpp_bindings_sys::GGML_LOG_LEVEL_CONT);
-
-        if let Some((previous_log_level, buffer)) = self
+        let replaced = self
             .buffered
             .lock()
             .unwrap()
-            .replace((level, text.to_string()))
-        {
+            .replace((level, text.to_string()));
+
+        if let Some((previous_log_level, buffer)) = replaced {
             tracing::warn!(
                 level = previous_log_level,
                 text = &buffer,
@@ -220,14 +234,14 @@ impl State {
         self.is_buffering
             .store(true, std::sync::atomic::Ordering::Release);
         self.previous_level
-            .store(level as i32, std::sync::atomic::Ordering::Release);
+            .store(level.cast_signed(), std::sync::atomic::Ordering::Release);
     }
 
-    // Emit a normal unbuffered log message (not the CONT log level and the text ends with a newline).
+    /// Emit a normal unbuffered log message (not the CONT log level and the text ends with a newline).
+    ///
+    /// # Panics
+    /// Panics if the internal mutex is poisoned.
     pub fn emit_non_cont_line(&self, level: llama_cpp_bindings_sys::ggml_log_level, text: &str) {
-        debug_assert!(text.ends_with('\n'));
-        debug_assert_ne!(level, llama_cpp_bindings_sys::GGML_LOG_LEVEL_CONT);
-
         if self
             .is_buffering
             .swap(false, std::sync::atomic::Ordering::Acquire)
@@ -244,10 +258,9 @@ impl State {
         }
 
         self.previous_level
-            .store(level as i32, std::sync::atomic::Ordering::Release);
+            .store(level.cast_signed(), std::sync::atomic::Ordering::Release);
 
-        let (text, newline) = text.split_at(text.len() - 1);
-        debug_assert_eq!(newline, "\n");
+        let (text, _trailing_newline) = text.split_at(text.len() - 1);
 
         match level {
             llama_cpp_bindings_sys::GGML_LOG_LEVEL_NONE => {
@@ -261,7 +274,13 @@ impl State {
             | llama_cpp_bindings_sys::GGML_LOG_LEVEL_INFO
             | llama_cpp_bindings_sys::GGML_LOG_LEVEL_WARN
             | llama_cpp_bindings_sys::GGML_LOG_LEVEL_ERROR => self.generate_log(level, text),
-            llama_cpp_bindings_sys::GGML_LOG_LEVEL_CONT => unreachable!(),
+            llama_cpp_bindings_sys::GGML_LOG_LEVEL_CONT => {
+                tracing::warn!(
+                    text = text,
+                    origin = "crate",
+                    "CONT log level passed to emit_non_cont_line"
+                );
+            }
             _ => {
                 tracing::warn!(
                     level = level,
@@ -279,7 +298,7 @@ impl State {
     ) {
         if level != llama_cpp_bindings_sys::GGML_LOG_LEVEL_CONT {
             self.previous_level
-                .store(level as i32, std::sync::atomic::Ordering::Release);
+                .store(level.cast_signed(), std::sync::atomic::Ordering::Release);
         }
     }
 
@@ -289,7 +308,7 @@ impl State {
         let level = if level == llama_cpp_bindings_sys::GGML_LOG_LEVEL_CONT {
             self.previous_level
                 .load(std::sync::atomic::Ordering::Relaxed)
-                as llama_cpp_bindings_sys::ggml_log_level
+                .cast_unsigned()
         } else {
             level
         };
@@ -303,7 +322,9 @@ impl State {
             level
         };
 
-        let (meta, _) = meta_for_level(effective_level);
+        let Some((meta, _)) = meta_for_level(effective_level) else {
+            return false;
+        };
 
         tracing::dispatcher::get_default(|dispatcher| dispatcher.enabled(meta))
     }
@@ -396,9 +417,13 @@ mod tests {
     #[test]
     fn state_new_creates_empty_buffer() {
         let state = State::new(Module::LlamaCpp, LogOptions::default());
-        let buffer = state.buffered.lock().unwrap_or_else(|err| err.into_inner());
+        let buffer = state
+            .buffered
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         assert!(buffer.is_none());
+        drop(buffer);
         assert!(!state.options.disabled);
     }
 
@@ -412,7 +437,10 @@ mod tests {
             .previous_level
             .load(std::sync::atomic::Ordering::Relaxed);
 
-        assert_eq!(stored, llama_cpp_bindings_sys::GGML_LOG_LEVEL_WARN as i32);
+        assert_eq!(
+            stored,
+            llama_cpp_bindings_sys::GGML_LOG_LEVEL_WARN.cast_signed()
+        );
     }
 
     #[test]
@@ -426,7 +454,10 @@ mod tests {
             .previous_level
             .load(std::sync::atomic::Ordering::Relaxed);
 
-        assert_eq!(stored, llama_cpp_bindings_sys::GGML_LOG_LEVEL_ERROR as i32);
+        assert_eq!(
+            stored,
+            llama_cpp_bindings_sys::GGML_LOG_LEVEL_ERROR.cast_signed()
+        );
     }
 
     #[test]
@@ -441,13 +472,16 @@ mod tests {
                 .load(std::sync::atomic::Ordering::Relaxed)
         );
 
-        let buffer = state.buffered.lock().unwrap_or_else(|err| err.into_inner());
+        let buffer = state
+            .buffered
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         assert!(buffer.is_some());
         let (level, text) = buffer.as_ref().unwrap();
-
         assert_eq!(*level, llama_cpp_bindings_sys::GGML_LOG_LEVEL_INFO);
         assert_eq!(text, "partial");
+        drop(buffer);
     }
 
     #[test]
@@ -458,12 +492,15 @@ mod tests {
 
         state.cont_buffered_log("world");
 
-        let buffer = state.buffered.lock().unwrap_or_else(|err| err.into_inner());
+        let buffer = state
+            .buffered
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         assert!(buffer.is_some());
         let (_, text) = buffer.as_ref().unwrap();
-
         assert_eq!(text, "hello world");
+        drop(buffer);
     }
 
     struct Logger {
@@ -477,9 +514,7 @@ mod tests {
 
     impl std::io::Write for VecWriter {
         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            let log_line = String::from_utf8(buf.to_vec()).map_err(|utf8_error| {
-                std::io::Error::new(std::io::ErrorKind::InvalidData, utf8_error)
-            })?;
+            let log_line = String::from_utf8_lossy(buf).into_owned();
             self.0.lock().unwrap().push(log_line);
 
             Ok(buf.len())
@@ -514,7 +549,8 @@ mod tests {
     fn cont_disabled_log() {
         let logger = create_logger(tracing::Level::INFO);
         let mut log_state = Box::new(State::new(Module::LlamaCpp, LogOptions::default()));
-        let log_ptr = log_state.as_mut() as *mut State as *mut std::os::raw::c_void;
+        let log_ptr =
+            std::ptr::from_mut::<State>(log_state.as_mut()).cast::<std::os::raw::c_void>();
 
         logs_to_trace(
             llama_cpp_bindings_sys::GGML_LOG_LEVEL_DEBUG,
@@ -550,7 +586,8 @@ mod tests {
     fn cont_enabled_log() {
         let logger = create_logger(tracing::Level::INFO);
         let mut log_state = Box::new(State::new(Module::LlamaCpp, LogOptions::default()));
-        let log_ptr = log_state.as_mut() as *mut State as *mut std::os::raw::c_void;
+        let log_ptr =
+            std::ptr::from_mut::<State>(log_state.as_mut()).cast::<std::os::raw::c_void>();
 
         logs_to_trace(
             llama_cpp_bindings_sys::GGML_LOG_LEVEL_INFO,
@@ -572,7 +609,8 @@ mod tests {
         let logger = create_logger(tracing::Level::DEBUG);
         let disabled_options = LogOptions::default().with_logs_enabled(false);
         let mut log_state = Box::new(State::new(Module::LlamaCpp, disabled_options));
-        let log_ptr = log_state.as_mut() as *mut State as *mut std::os::raw::c_void;
+        let log_ptr =
+            std::ptr::from_mut::<State>(log_state.as_mut()).cast::<std::os::raw::c_void>();
 
         logs_to_trace(
             llama_cpp_bindings_sys::GGML_LOG_LEVEL_INFO,
@@ -592,7 +630,8 @@ mod tests {
     fn info_level_log_emitted() {
         let logger = create_logger(tracing::Level::INFO);
         let mut log_state = Box::new(State::new(Module::LlamaCpp, LogOptions::default()));
-        let log_ptr = log_state.as_mut() as *mut State as *mut std::os::raw::c_void;
+        let log_ptr =
+            std::ptr::from_mut::<State>(log_state.as_mut()).cast::<std::os::raw::c_void>();
 
         logs_to_trace(
             llama_cpp_bindings_sys::GGML_LOG_LEVEL_INFO,
@@ -601,16 +640,17 @@ mod tests {
         );
 
         let logs = logger.logs.lock().unwrap();
-
         assert_eq!(logs.len(), 1);
         assert!(logs[0].contains("info message"));
+        drop(logs);
     }
 
     #[test]
     fn warn_level_log_emitted() {
         let logger = create_logger(tracing::Level::WARN);
         let mut log_state = Box::new(State::new(Module::LlamaCpp, LogOptions::default()));
-        let log_ptr = log_state.as_mut() as *mut State as *mut std::os::raw::c_void;
+        let log_ptr =
+            std::ptr::from_mut::<State>(log_state.as_mut()).cast::<std::os::raw::c_void>();
 
         logs_to_trace(
             llama_cpp_bindings_sys::GGML_LOG_LEVEL_WARN,
@@ -619,16 +659,17 @@ mod tests {
         );
 
         let logs = logger.logs.lock().unwrap();
-
         assert_eq!(logs.len(), 1);
         assert!(logs[0].contains("warning message"));
+        drop(logs);
     }
 
     #[test]
     fn error_level_log_emitted() {
         let logger = create_logger(tracing::Level::ERROR);
         let mut log_state = Box::new(State::new(Module::LlamaCpp, LogOptions::default()));
-        let log_ptr = log_state.as_mut() as *mut State as *mut std::os::raw::c_void;
+        let log_ptr =
+            std::ptr::from_mut::<State>(log_state.as_mut()).cast::<std::os::raw::c_void>();
 
         logs_to_trace(
             llama_cpp_bindings_sys::GGML_LOG_LEVEL_ERROR,
@@ -637,16 +678,17 @@ mod tests {
         );
 
         let logs = logger.logs.lock().unwrap();
-
         assert_eq!(logs.len(), 1);
         assert!(logs[0].contains("error message"));
+        drop(logs);
     }
 
     #[test]
     fn debug_level_log_emitted_when_enabled() {
         let logger = create_logger(tracing::Level::DEBUG);
         let mut log_state = Box::new(State::new(Module::LlamaCpp, LogOptions::default()));
-        let log_ptr = log_state.as_mut() as *mut State as *mut std::os::raw::c_void;
+        let log_ptr =
+            std::ptr::from_mut::<State>(log_state.as_mut()).cast::<std::os::raw::c_void>();
 
         logs_to_trace(
             llama_cpp_bindings_sys::GGML_LOG_LEVEL_DEBUG,
@@ -655,16 +697,17 @@ mod tests {
         );
 
         let logs = logger.logs.lock().unwrap();
-
         assert_eq!(logs.len(), 1);
         assert!(logs[0].contains("debug message"));
+        drop(logs);
     }
 
     #[test]
     fn submodule_extraction_from_log_text() {
         let logger = create_logger(tracing::Level::INFO);
         let mut log_state = Box::new(State::new(Module::LlamaCpp, LogOptions::default()));
-        let log_ptr = log_state.as_mut() as *mut State as *mut std::os::raw::c_void;
+        let log_ptr =
+            std::ptr::from_mut::<State>(log_state.as_mut()).cast::<std::os::raw::c_void>();
 
         logs_to_trace(
             llama_cpp_bindings_sys::GGML_LOG_LEVEL_INFO,
@@ -673,16 +716,17 @@ mod tests {
         );
 
         let logs = logger.logs.lock().unwrap();
-
         assert_eq!(logs.len(), 1);
         assert!(logs[0].contains("initialized"));
+        drop(logs);
     }
 
     #[test]
     fn multi_part_cont_log() {
         let logger = create_logger(tracing::Level::INFO);
         let mut log_state = Box::new(State::new(Module::LlamaCpp, LogOptions::default()));
-        let log_ptr = log_state.as_mut() as *mut State as *mut std::os::raw::c_void;
+        let log_ptr =
+            std::ptr::from_mut::<State>(log_state.as_mut()).cast::<std::os::raw::c_void>();
 
         logs_to_trace(
             llama_cpp_bindings_sys::GGML_LOG_LEVEL_INFO,
@@ -701,9 +745,9 @@ mod tests {
         );
 
         let logs = logger.logs.lock().unwrap();
-
         assert_eq!(logs.len(), 1);
         assert!(logs[0].contains("part1 part2 part3"));
+        drop(logs);
     }
 
     #[test]
@@ -711,7 +755,8 @@ mod tests {
         let logger = create_logger(tracing::Level::INFO);
         let options = LogOptions::default().with_demote_info_to_debug(true);
         let mut log_state = Box::new(State::new(Module::LlamaCpp, options));
-        let log_ptr = log_state.as_mut() as *mut State as *mut std::os::raw::c_void;
+        let log_ptr =
+            std::ptr::from_mut::<State>(log_state.as_mut()).cast::<std::os::raw::c_void>();
 
         logs_to_trace(
             llama_cpp_bindings_sys::GGML_LOG_LEVEL_INFO,
@@ -727,7 +772,8 @@ mod tests {
         let logger = create_logger(tracing::Level::DEBUG);
         let options = LogOptions::default().with_demote_info_to_debug(true);
         let mut log_state = Box::new(State::new(Module::LlamaCpp, options));
-        let log_ptr = log_state.as_mut() as *mut State as *mut std::os::raw::c_void;
+        let log_ptr =
+            std::ptr::from_mut::<State>(log_state.as_mut()).cast::<std::os::raw::c_void>();
 
         logs_to_trace(
             llama_cpp_bindings_sys::GGML_LOG_LEVEL_INFO,
@@ -736,9 +782,9 @@ mod tests {
         );
 
         let logs = logger.logs.lock().unwrap();
-
         assert_eq!(logs.len(), 1);
         assert!(logs[0].contains("visible at debug"));
+        drop(logs);
     }
 
     #[test]
@@ -746,7 +792,8 @@ mod tests {
         let logger = create_logger(tracing::Level::INFO);
         let options = LogOptions::default().with_demote_info_to_debug(true);
         let mut log_state = Box::new(State::new(Module::LlamaCpp, options));
-        let log_ptr = log_state.as_mut() as *mut State as *mut std::os::raw::c_void;
+        let log_ptr =
+            std::ptr::from_mut::<State>(log_state.as_mut()).cast::<std::os::raw::c_void>();
 
         logs_to_trace(
             llama_cpp_bindings_sys::GGML_LOG_LEVEL_ERROR,
@@ -755,9 +802,9 @@ mod tests {
         );
 
         let logs = logger.logs.lock().unwrap();
-
         assert_eq!(logs.len(), 1);
         assert!(logs[0].contains("error still visible"));
+        drop(logs);
     }
 
     #[test]
@@ -765,7 +812,8 @@ mod tests {
         let logger = create_logger(tracing::Level::INFO);
         let options = LogOptions::default().with_demote_info_to_debug(true);
         let mut log_state = Box::new(State::new(Module::LlamaCpp, options));
-        let log_ptr = log_state.as_mut() as *mut State as *mut std::os::raw::c_void;
+        let log_ptr =
+            std::ptr::from_mut::<State>(log_state.as_mut()).cast::<std::os::raw::c_void>();
 
         logs_to_trace(
             llama_cpp_bindings_sys::GGML_LOG_LEVEL_WARN,
@@ -774,8 +822,194 @@ mod tests {
         );
 
         let logs = logger.logs.lock().unwrap();
-
         assert_eq!(logs.len(), 1);
         assert!(logs[0].contains("warning still visible"));
+        drop(logs);
+    }
+
+    #[test]
+    fn emit_non_cont_line_level_none() {
+        let logger = create_logger(tracing::Level::INFO);
+        let state = State::new(Module::LlamaCpp, LogOptions::default());
+
+        state.emit_non_cont_line(
+            llama_cpp_bindings_sys::GGML_LOG_LEVEL_NONE,
+            "none level message\n",
+        );
+
+        let logs = logger.logs.lock().unwrap();
+        assert_eq!(logs.len(), 1);
+        assert!(logs[0].contains("none level message"));
+        drop(logs);
+    }
+
+    #[test]
+    fn emit_non_cont_line_level_none_demoted_to_debug() {
+        let logger = create_logger(tracing::Level::DEBUG);
+        let options = LogOptions::default().with_demote_info_to_debug(true);
+        let state = State::new(Module::LlamaCpp, options);
+
+        state.emit_non_cont_line(
+            llama_cpp_bindings_sys::GGML_LOG_LEVEL_NONE,
+            "demoted none\n",
+        );
+
+        let logs = logger.logs.lock().unwrap();
+        assert_eq!(logs.len(), 1);
+        assert!(logs[0].contains("demoted none"));
+        drop(logs);
+    }
+
+    #[test]
+    fn cont_without_prior_buffer_infers_level() {
+        let _logger = create_logger(tracing::Level::WARN);
+        let state = State::new(Module::LlamaCpp, LogOptions::default());
+
+        state.update_previous_level_for_disabled_log(llama_cpp_bindings_sys::GGML_LOG_LEVEL_WARN);
+        state.cont_buffered_log("orphan text");
+
+        let buffer = state.buffered.lock().unwrap();
+        assert!(buffer.is_some());
+        let (level, text) = buffer.as_ref().unwrap();
+        assert_eq!(*level, llama_cpp_bindings_sys::GGML_LOG_LEVEL_WARN);
+        assert_eq!(text, "orphan text");
+        drop(buffer);
+    }
+
+    #[test]
+    fn emit_non_cont_flushes_stale_buffer() {
+        let _logger = create_logger(tracing::Level::WARN);
+        let state = State::new(Module::LlamaCpp, LogOptions::default());
+
+        state.buffer_non_cont(llama_cpp_bindings_sys::GGML_LOG_LEVEL_INFO, "stale");
+
+        state.emit_non_cont_line(llama_cpp_bindings_sys::GGML_LOG_LEVEL_WARN, "new line\n");
+
+        let buffer = state.buffered.lock().unwrap();
+        assert!(buffer.is_none());
+        drop(buffer);
+    }
+
+    #[test]
+    fn buffer_non_cont_replaces_previous_buffer() {
+        let _logger = create_logger(tracing::Level::WARN);
+        let state = State::new(Module::LlamaCpp, LogOptions::default());
+
+        state.buffer_non_cont(llama_cpp_bindings_sys::GGML_LOG_LEVEL_INFO, "first");
+        state.buffer_non_cont(llama_cpp_bindings_sys::GGML_LOG_LEVEL_WARN, "second");
+
+        let buffer = state.buffered.lock().unwrap();
+        let (level, text) = buffer.as_ref().unwrap();
+        assert_eq!(*level, llama_cpp_bindings_sys::GGML_LOG_LEVEL_WARN);
+        assert_eq!(text, "second");
+        drop(buffer);
+    }
+
+    #[test]
+    fn is_enabled_for_cont_uses_previous_level() {
+        let _logger = create_logger(tracing::Level::WARN);
+        let state = State::new(Module::LlamaCpp, LogOptions::default());
+
+        state.update_previous_level_for_disabled_log(llama_cpp_bindings_sys::GGML_LOG_LEVEL_ERROR);
+
+        let enabled = state.is_enabled_for_level(llama_cpp_bindings_sys::GGML_LOG_LEVEL_CONT);
+
+        assert!(enabled);
+    }
+
+    #[test]
+    fn unknown_log_level_emits_warning() {
+        let logger = create_logger(tracing::Level::WARN);
+        let state = State::new(Module::LlamaCpp, LogOptions::default());
+
+        state.emit_non_cont_line(9999, "unknown level message\n");
+
+        let logs = logger.logs.lock().unwrap();
+        assert!(
+            logs.iter()
+                .any(|log_line| log_line.contains("Unknown llama.cpp log level"))
+        );
+        drop(logs);
+    }
+
+    #[test]
+    fn send_logs_to_tracing_initializes_global_states() {
+        use super::{GGML_STATE, LLAMA_STATE, send_logs_to_tracing};
+
+        send_logs_to_tracing(LogOptions::default());
+
+        assert!(LLAMA_STATE.get().is_some());
+        assert!(GGML_STATE.get().is_some());
+    }
+
+    #[test]
+    fn meta_for_level_returns_none_for_unknown_level() {
+        let result = super::meta_for_level(9999);
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn is_enabled_for_level_returns_false_for_none_level() {
+        let _logger = create_logger(tracing::Level::DEBUG);
+        let state = State::new(Module::LlamaCpp, LogOptions::default());
+
+        let enabled = state.is_enabled_for_level(llama_cpp_bindings_sys::GGML_LOG_LEVEL_NONE);
+
+        assert!(!enabled);
+    }
+
+    #[test]
+    fn generate_log_handles_unmapped_level_gracefully() {
+        let _logger = create_logger(tracing::Level::WARN);
+        let state = State::new(Module::LlamaCpp, LogOptions::default());
+
+        state.generate_log(9999, "unmapped level message");
+    }
+
+    #[test]
+    fn emit_non_cont_line_handles_cont_level_gracefully() {
+        let _logger = create_logger(tracing::Level::WARN);
+        let state = State::new(Module::LlamaCpp, LogOptions::default());
+
+        state.emit_non_cont_line(
+            llama_cpp_bindings_sys::GGML_LOG_LEVEL_CONT,
+            "cont passed to non-cont\n",
+        );
+    }
+
+    #[test]
+    fn callsite_metadata_returns_static_metadata() {
+        use tracing_core::callsite::Callsite;
+
+        let debug_meta = super::DEBUG_CS.metadata();
+        let info_meta = super::INFO_CS.metadata();
+        let warn_meta = super::WARN_CS.metadata();
+        let error_meta = super::ERROR_CS.metadata();
+
+        assert_eq!(*debug_meta.level(), tracing_core::Level::DEBUG);
+        assert_eq!(*info_meta.level(), tracing_core::Level::INFO);
+        assert_eq!(*warn_meta.level(), tracing_core::Level::WARN);
+        assert_eq!(*error_meta.level(), tracing_core::Level::ERROR);
+    }
+
+    #[test]
+    fn callsite_set_interest_does_not_panic() {
+        use tracing_core::callsite::Callsite;
+        use tracing_core::subscriber::Interest;
+
+        super::DEBUG_CS.set_interest(Interest::always());
+        super::INFO_CS.set_interest(Interest::never());
+        super::WARN_CS.set_interest(Interest::sometimes());
+        super::ERROR_CS.set_interest(Interest::always());
+    }
+
+    #[test]
+    fn vec_writer_flush_succeeds() {
+        use std::io::Write;
+
+        let mut writer = VecWriter(Arc::new(Mutex::new(vec![])));
+
+        writer.flush().unwrap();
     }
 }

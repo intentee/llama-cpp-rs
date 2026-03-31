@@ -19,8 +19,8 @@ impl LlamaTokenData {
     /// let token = LlamaToken::new(1);
     /// let token_data = LlamaTokenData::new(token, 1.0, 1.0);
     #[must_use]
-    pub fn new(LlamaToken(id): LlamaToken, logit: f32, p: f32) -> Self {
-        LlamaTokenData {
+    pub const fn new(LlamaToken(id): LlamaToken, logit: f32, p: f32) -> Self {
+        Self {
             data: llama_cpp_bindings_sys::llama_token_data { id, logit, p },
         }
     }
@@ -33,7 +33,7 @@ impl LlamaTokenData {
     /// assert_eq!(token_data.id(), token);
     /// ```
     #[must_use]
-    pub fn id(&self) -> LlamaToken {
+    pub const fn id(&self) -> LlamaToken {
         LlamaToken(self.data.id)
     }
 
@@ -46,7 +46,7 @@ impl LlamaTokenData {
     /// assert_eq!(token_data.logit(), 1.0);
     /// ```
     #[must_use]
-    pub fn logit(&self) -> f32 {
+    pub const fn logit(&self) -> f32 {
         self.data.logit
     }
 
@@ -59,7 +59,7 @@ impl LlamaTokenData {
     /// assert_eq!(token_data.p(), 1.0);
     /// ```
     #[must_use]
-    pub fn p(&self) -> f32 {
+    pub const fn p(&self) -> f32 {
         self.data.p
     }
 
@@ -72,7 +72,7 @@ impl LlamaTokenData {
     /// token_data.set_id(LlamaToken::new(2));
     /// assert_eq!(token_data.id(), LlamaToken::new(2));
     /// ```
-    pub fn set_id(&mut self, id: LlamaToken) {
+    pub const fn set_id(&mut self, id: LlamaToken) {
         self.data.id = id.0;
     }
 
@@ -85,7 +85,7 @@ impl LlamaTokenData {
     /// token_data.set_logit(2.0);
     /// assert_eq!(token_data.logit(), 2.0);
     /// ```
-    pub fn set_logit(&mut self, logit: f32) {
+    pub const fn set_logit(&mut self, logit: f32) {
         self.data.logit = logit;
     }
 
@@ -98,7 +98,43 @@ impl LlamaTokenData {
     /// token_data.set_p(2.0);
     /// assert_eq!(token_data.p(), 2.0);
     /// ```
-    pub fn set_p(&mut self, p: f32) {
+    pub const fn set_p(&mut self, p: f32) {
         self.data.p = p;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LlamaTokenData;
+    use crate::token::LlamaToken;
+
+    #[test]
+    fn new_stores_all_fields() {
+        let token = LlamaToken::new(7);
+        let data = LlamaTokenData::new(token, 2.5, 0.8);
+        assert_eq!(data.id(), token);
+        assert!((data.logit() - 2.5_f32).abs() < f32::EPSILON);
+        assert!((data.p() - 0.8_f32).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn set_id_updates_token() {
+        let mut data = LlamaTokenData::new(LlamaToken::new(1), 0.0, 0.0);
+        data.set_id(LlamaToken::new(42));
+        assert_eq!(data.id(), LlamaToken::new(42));
+    }
+
+    #[test]
+    fn set_logit_updates_logit() {
+        let mut data = LlamaTokenData::new(LlamaToken::new(1), 0.0, 0.0);
+        data.set_logit(-1.5);
+        assert!((data.logit() - (-1.5_f32)).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn set_p_updates_probability() {
+        let mut data = LlamaTokenData::new(LlamaToken::new(1), 0.0, 0.0);
+        data.set_p(0.95);
+        assert!((data.p() - 0.95_f32).abs() < f32::EPSILON);
     }
 }

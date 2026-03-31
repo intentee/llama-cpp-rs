@@ -145,7 +145,7 @@ pub enum GrammarError {
     GrammarNullBytes,
     /// A string contains null bytes
     #[error("String contains null bytes: {0}")]
-    NulError(#[from] std::ffi::NulError),
+    NulError(#[from] NulError),
     /// The grammar call returned null
     #[error("Grammar call returned null")]
     NullGrammar,
@@ -169,9 +169,9 @@ pub enum SamplingError {
 impl From<NonZeroI32> for DecodeError {
     fn from(value: NonZeroI32) -> Self {
         match value.get() {
-            1 => DecodeError::NoKvCacheSlot,
-            -1 => DecodeError::NTokensZero,
-            error_code => DecodeError::Unknown(error_code),
+            1 => Self::NoKvCacheSlot,
+            -1 => Self::NTokensZero,
+            error_code => Self::Unknown(error_code),
         }
     }
 }
@@ -180,9 +180,9 @@ impl From<NonZeroI32> for DecodeError {
 impl From<NonZeroI32> for EncodeError {
     fn from(value: NonZeroI32) -> Self {
         match value.get() {
-            1 => EncodeError::NoKvCacheSlot,
-            -1 => EncodeError::NTokensZero,
-            error_code => EncodeError::Unknown(error_code),
+            1 => Self::NoKvCacheSlot,
+            -1 => Self::NTokensZero,
+            error_code => Self::Unknown(error_code),
         }
     }
 }
@@ -199,6 +199,9 @@ pub enum LlamaModelLoadError {
     /// Failed to convert the path to a rust str. This means the path was not valid unicode
     #[error("failed to convert path {0} to str")]
     PathToStrError(PathBuf),
+    /// The model file does not exist at the given path.
+    #[error("model file not found: {0}")]
+    FileNotFound(PathBuf),
 }
 
 /// An error that can occur when loading a model.
@@ -213,6 +216,9 @@ pub enum LlamaLoraAdapterInitError {
     /// Failed to convert the path to a rust str. This means the path was not valid unicode
     #[error("failed to convert path {0} to str")]
     PathToStrError(PathBuf),
+    /// The adapter file does not exist at the given path.
+    #[error("adapter file not found: {0}")]
+    FileNotFound(PathBuf),
 }
 
 /// An error that can occur when loading a model.

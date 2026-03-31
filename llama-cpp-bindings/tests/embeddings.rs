@@ -9,19 +9,7 @@ use llama_cpp_bindings::llama_backend::LlamaBackend;
 use llama_cpp_bindings::llama_batch::LlamaBatch;
 use llama_cpp_bindings::model::params::LlamaModelParams;
 use llama_cpp_bindings::model::{AddBos, LlamaModel};
-
-const HF_REPO: &str = "Qwen/Qwen3-Embedding-0.6B-GGUF";
-const HF_MODEL: &str = "Qwen3-Embedding-0.6B-Q8_0.gguf";
-
-fn download_model() -> Result<std::path::PathBuf> {
-    let path = hf_hub::api::sync::ApiBuilder::new()
-        .with_progress(true)
-        .build()?
-        .model(HF_REPO.to_string())
-        .get(HF_MODEL)?;
-
-    Ok(path)
-}
+use llama_cpp_bindings::test_model;
 
 fn normalize(input: &[f32]) -> Vec<f32> {
     let magnitude = input
@@ -36,7 +24,7 @@ fn normalize(input: &[f32]) -> Vec<f32> {
 fn embedding_generation_produces_vectors() -> Result<()> {
     let backend = LlamaBackend::init()?;
     let model_params = LlamaModelParams::default();
-    let model_path = download_model()?;
+    let model_path = test_model::download_embedding_model()?;
     let model = LlamaModel::load_from_file(&backend, &model_path, &model_params)
         .with_context(|| "unable to load model")?;
 

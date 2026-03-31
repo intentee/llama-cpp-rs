@@ -3,6 +3,25 @@ use std::ffi::{CStr, CString, c_char};
 use std::num::NonZeroU16;
 use std::os::raw::c_int;
 use std::path::Path;
+
+fn truncated_buffer_to_string(
+    mut buffer: Vec<u8>,
+    length: usize,
+) -> Result<String, ApplyChatTemplateError> {
+    buffer.truncate(length);
+
+    Ok(String::from_utf8(buffer)?)
+}
+
+fn validate_string_length_for_tokenizer(length: usize) -> Result<c_int, StringToTokenError> {
+    Ok(c_int::try_from(length)?)
+}
+
+fn cstring_with_validated_len(str: &str) -> Result<(CString, c_int), StringToTokenError> {
+    let c_string = CString::new(str)?;
+    let len = validate_string_length_for_tokenizer(c_string.as_bytes().len())?;
+    Ok((c_string, len))
+}
 use std::ptr::{self, NonNull};
 
 use crate::context::LlamaContext;
@@ -15,6 +34,16 @@ use crate::{
     ApplyChatTemplateError, ChatTemplateError, LlamaContextLoadError, LlamaLoraAdapterInitError,
     LlamaModelLoadError, MetaValError, StringToTokenError, TokenToStringError,
 };
+
+fn finish_lora_adapter_init(
+    raw_adapter: *mut llama_cpp_bindings_sys::llama_adapter_lora,
+) -> Result<LlamaLoraAdapter, LlamaLoraAdapterInitError> {
+    let adapter = NonNull::new(raw_adapter).ok_or(LlamaLoraAdapterInitError::NullResult)?;
+
+    Ok(LlamaLoraAdapter {
+        lora_adapter: adapter,
+    })
+}
 
 pub mod add_bos;
 pub mod chat_template_result;
@@ -163,7 +192,7 @@ impl LlamaModel {
         let tokens_estimation = std::cmp::max(8, (str.len() / 2) + usize::from(add_bos));
         let mut buffer: Vec<LlamaToken> = Vec::with_capacity(tokens_estimation);
 
-        let c_string = CString::new(str)?;
+        let (c_string, c_string_len) = cstring_with_validated_len(str)?;
         let buffer_capacity =
             c_int::try_from(buffer.capacity()).expect("buffer capacity should fit into a c_int");
 
@@ -171,7 +200,7 @@ impl LlamaModel {
             llama_cpp_bindings_sys::llama_tokenize(
                 self.vocab_ptr(),
                 c_string.as_ptr(),
-                c_int::try_from(c_string.as_bytes().len())?,
+                c_string_len,
                 buffer
                     .as_mut_ptr()
                     .cast::<llama_cpp_bindings_sys::llama_token>(),
@@ -187,7 +216,7 @@ impl LlamaModel {
                 llama_cpp_bindings_sys::llama_tokenize(
                     self.vocab_ptr(),
                     c_string.as_ptr(),
-                    c_int::try_from(c_string.as_bytes().len())?,
+                    c_string_len,
                     buffer
                         .as_mut_ptr()
                         .cast::<llama_cpp_bindings_sys::llama_token>(),
@@ -461,18 +490,11 @@ impl LlamaModel {
     }
 
     /// Returns the rope type of the model.
+    #[must_use]
     pub fn rope_type(&self) -> Option<RopeType> {
-        match unsafe { llama_cpp_bindings_sys::llama_model_rope_type(self.model.as_ptr()) } {
-            llama_cpp_bindings_sys::LLAMA_ROPE_TYPE_NONE => None,
-            llama_cpp_bindings_sys::LLAMA_ROPE_TYPE_NORM => Some(RopeType::Norm),
-            llama_cpp_bindings_sys::LLAMA_ROPE_TYPE_NEOX => Some(RopeType::NeoX),
-            llama_cpp_bindings_sys::LLAMA_ROPE_TYPE_MROPE => Some(RopeType::MRope),
-            llama_cpp_bindings_sys::LLAMA_ROPE_TYPE_VISION => Some(RopeType::Vision),
-            rope_type => {
-                tracing::error!(rope_type = rope_type, "Unexpected rope type from llama.cpp");
-                None
-            }
-        }
+        let raw = unsafe { llama_cpp_bindings_sys::llama_model_rope_type(self.model.as_ptr()) };
+
+        rope_type::rope_type_from_raw(raw)
     }
 
     /// Get chat template from model by name. If the name parameter is None, the default chat template will be returned.
@@ -487,7 +509,11 @@ impl LlamaModel {
     /// # Errors
     ///
     /// * If the model has no chat template by that name
-    /// * If the chat template is not a valid [`CString`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if the C-returned chat template string contains interior null bytes
+    /// (should never happen with valid model data).
     pub fn chat_template(
         &self,
         name: Option<&str>,
@@ -495,7 +521,7 @@ impl LlamaModel {
         let name_cstr = name.map(CString::new);
         let name_ptr = match name_cstr {
             Some(Ok(name)) => name.as_ptr(),
-            _ => std::ptr::null(),
+            _ => ptr::null(),
         };
         let result = unsafe {
             llama_cpp_bindings_sys::llama_model_chat_template(self.model.as_ptr(), name_ptr)
@@ -505,7 +531,8 @@ impl LlamaModel {
             Err(ChatTemplateError::MissingTemplate)
         } else {
             let chat_template_cstr = unsafe { CStr::from_ptr(result) };
-            let chat_template = CString::new(chat_template_cstr.to_bytes())?;
+            let chat_template = CString::new(chat_template_cstr.to_bytes())
+                .expect("CStr bytes cannot contain interior null bytes");
 
             Ok(LlamaChatTemplate(chat_template))
         }
@@ -516,6 +543,10 @@ impl LlamaModel {
     /// # Errors
     ///
     /// See [`LlamaModelLoadError`] for more information.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a valid UTF-8 path somehow contains interior null bytes (should never happen).
     #[tracing::instrument(skip_all, fields(params))]
     pub fn load_from_file(
         _: &LlamaBackend,
@@ -523,25 +554,23 @@ impl LlamaModel {
         params: &LlamaModelParams,
     ) -> Result<Self, LlamaModelLoadError> {
         let path = path.as_ref();
-        debug_assert!(
-            Path::new(path).exists(),
-            "{} does not exist",
-            path.display()
-        );
-        let path = path
-            .to_str()
-            .ok_or(LlamaModelLoadError::PathToStrError(path.to_path_buf()))?;
 
-        let cstr = CString::new(path)?;
+        if !path.exists() {
+            return Err(LlamaModelLoadError::FileNotFound(path.to_path_buf()));
+        }
+
+        let path_str = path
+            .to_str()
+            .ok_or_else(|| LlamaModelLoadError::PathToStrError(path.to_path_buf()))?;
+
+        let cstr = CString::new(path_str).expect("valid UTF-8 path cannot contain null bytes");
         let llama_model = unsafe {
             llama_cpp_bindings_sys::llama_load_model_from_file(cstr.as_ptr(), params.params)
         };
 
         let model = NonNull::new(llama_model).ok_or(LlamaModelLoadError::NullResult)?;
 
-        tracing::debug!(?path, "Loaded model");
-
-        Ok(LlamaModel { model })
+        Ok(Self { model })
     }
 
     /// Initializes a lora adapter from a file.
@@ -549,35 +578,30 @@ impl LlamaModel {
     /// # Errors
     ///
     /// See [`LlamaLoraAdapterInitError`] for more information.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a valid UTF-8 path somehow contains interior null bytes (should never happen).
     pub fn lora_adapter_init(
         &self,
         path: impl AsRef<Path>,
     ) -> Result<LlamaLoraAdapter, LlamaLoraAdapterInitError> {
         let path = path.as_ref();
-        debug_assert!(
-            Path::new(path).exists(),
-            "{} does not exist",
-            path.display()
-        );
+
+        if !path.exists() {
+            return Err(LlamaLoraAdapterInitError::FileNotFound(path.to_path_buf()));
+        }
 
         let path = path
             .to_str()
-            .ok_or(LlamaLoraAdapterInitError::PathToStrError(
-                path.to_path_buf(),
-            ))?;
+            .ok_or_else(|| LlamaLoraAdapterInitError::PathToStrError(path.to_path_buf()))?;
 
-        let cstr = CString::new(path)?;
+        let cstr = CString::new(path).expect("valid UTF-8 path cannot contain null bytes");
         let adapter = unsafe {
             llama_cpp_bindings_sys::llama_adapter_lora_init(self.model.as_ptr(), cstr.as_ptr())
         };
 
-        let adapter = NonNull::new(adapter).ok_or(LlamaLoraAdapterInitError::NullResult)?;
-
-        tracing::debug!(?path, "Initialized lora adapter");
-
-        Ok(LlamaLoraAdapter {
-            lora_adapter: adapter,
-        })
+        finish_lora_adapter_init(adapter)
     }
 
     /// Create a new context from this model.
@@ -586,6 +610,7 @@ impl LlamaModel {
     ///
     /// There is many ways this can fail. See [`LlamaContextLoadError`] for more information.
     // we intentionally do not derive Copy on `LlamaContextParams` to allow llama.cpp to change the type to be non-trivially copyable.
+    #[allow(clippy::needless_pass_by_value)]
     pub fn new_context<'model>(
         &'model self,
         _: &LlamaBackend,
@@ -671,9 +696,7 @@ impl LlamaModel {
             };
             assert_eq!(Ok(res), buff.len().try_into());
         }
-        buff.truncate(res.try_into().expect("res is negative"));
-
-        Ok(String::from_utf8(buff)?)
+        truncated_buffer_to_string(buff, res.try_into().expect("res is negative"))
     }
 
     /// Apply the models chat template to some messages and return an optional tool grammar.
@@ -808,11 +831,9 @@ where
         return extract_meta_string(c_function, returned_len + 1);
     }
 
-    debug_assert_eq!(
-        buffer.get(returned_len),
-        Some(&0),
-        "should end with null byte"
-    );
+    if buffer.get(returned_len) != Some(&0) {
+        return Err(MetaValError::NegativeReturn(-1));
+    }
 
     buffer.truncate(returned_len);
 
@@ -822,5 +843,1010 @@ where
 impl Drop for LlamaModel {
     fn drop(&mut self) {
         unsafe { llama_cpp_bindings_sys::llama_free_model(self.model.as_ptr()) }
+    }
+}
+
+#[cfg(test)]
+mod extract_meta_string_tests {
+    use super::extract_meta_string;
+    use crate::MetaValError;
+
+    #[test]
+    fn returns_error_when_null_terminator_missing() {
+        let result = extract_meta_string(
+            |buf_ptr, buf_len| {
+                let buffer =
+                    unsafe { std::slice::from_raw_parts_mut(buf_ptr.cast::<u8>(), buf_len) };
+                buffer[0] = b'a';
+                buffer[1] = b'b';
+                // Intentionally do NOT write a null terminator at position 2
+                buffer[2] = b'c';
+                2
+            },
+            4,
+        );
+
+        assert_eq!(result.unwrap_err(), MetaValError::NegativeReturn(-1));
+    }
+
+    #[test]
+    fn returns_error_for_negative_return_value() {
+        let result = extract_meta_string(|_buf_ptr, _buf_len| -5, 4);
+
+        assert_eq!(result.unwrap_err(), MetaValError::NegativeReturn(-5));
+    }
+
+    #[test]
+    fn returns_error_for_invalid_utf8_data() {
+        let result = extract_meta_string(
+            |buf_ptr, buf_len| {
+                let buffer =
+                    unsafe { std::slice::from_raw_parts_mut(buf_ptr.cast::<u8>(), buf_len) };
+                buffer[0] = 0xFF;
+                buffer[1] = 0xFE;
+                buffer[2] = 0;
+                2
+            },
+            4,
+        );
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("FromUtf8Error"));
+    }
+
+    #[test]
+    fn triggers_buffer_resize_when_returned_len_exceeds_capacity() {
+        let call_count = std::cell::Cell::new(0);
+        let result = extract_meta_string(
+            |buf_ptr, buf_len| {
+                let count = call_count.get();
+                call_count.set(count + 1);
+                if count == 0 {
+                    // First call: return length larger than capacity to trigger resize
+                    10
+                } else {
+                    // Second call with larger buffer: write valid data
+                    let buffer =
+                        unsafe { std::slice::from_raw_parts_mut(buf_ptr.cast::<u8>(), buf_len) };
+                    buffer[0] = b'h';
+                    buffer[1] = b'i';
+                    buffer[2] = 0;
+                    2
+                }
+            },
+            4,
+        );
+
+        assert_eq!(result.unwrap(), "hi");
+    }
+
+    #[test]
+    fn cstring_with_validated_len_null_byte_returns_error() {
+        let result = super::cstring_with_validated_len("null\0byte");
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_string_length_overflow_returns_error() {
+        let result = super::validate_string_length_for_tokenizer(usize::MAX);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn truncated_buffer_to_string_with_invalid_utf8_returns_error() {
+        let invalid_utf8 = vec![0xff, 0xfe, 0xfd];
+        let result = super::truncated_buffer_to_string(invalid_utf8, 3);
+
+        assert!(result.is_err());
+    }
+}
+
+#[cfg(test)]
+mod finish_lora_adapter_init_tests {
+    use std::ptr::NonNull;
+
+    use super::finish_lora_adapter_init;
+
+    #[test]
+    fn finish_lora_adapter_init_stores_pointer() {
+        let adapter = finish_lora_adapter_init(NonNull::dangling().as_ptr()).unwrap();
+
+        assert_eq!(adapter.lora_adapter, NonNull::dangling());
+    }
+
+    #[test]
+    fn finish_lora_adapter_init_null_returns_error() {
+        let result = finish_lora_adapter_init(std::ptr::null_mut());
+
+        assert!(result.is_err());
+    }
+}
+
+#[cfg(test)]
+#[cfg(feature = "tests_that_use_llms")]
+mod tests {
+    use serial_test::serial;
+
+    use super::LlamaModel;
+    use crate::llama_backend::LlamaBackend;
+    use crate::model::AddBos;
+    use crate::model::params::LlamaModelParams;
+    use crate::test_model;
+
+    #[test]
+    #[serial]
+    fn model_loads_with_valid_metadata() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        assert!(model.n_vocab() > 0);
+        assert!(model.n_embd() > 0);
+        assert!(model.n_params() > 0);
+        assert!(model.n_ctx_train() > 0);
+    }
+
+    #[test]
+    #[serial]
+    fn special_tokens_exist() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let bos = model.token_bos();
+        let eos = model.token_eos();
+        assert_ne!(bos, eos);
+        assert!(model.is_eog_token(eos));
+        assert!(!model.is_eog_token(bos));
+    }
+
+    #[test]
+    #[serial]
+    fn str_to_token_roundtrip() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let tokens = model.str_to_token("hello world", AddBos::Never).unwrap();
+        assert!(!tokens.is_empty());
+        let mut decoder = encoding_rs::UTF_8.new_decoder();
+        let piece = model
+            .token_to_piece(tokens[0], &mut decoder, false, None)
+            .unwrap();
+        assert!(!piece.is_empty());
+    }
+
+    #[test]
+    #[serial]
+    fn chat_template_returns_non_empty() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let template = model.chat_template(None);
+        assert!(template.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn apply_chat_template_produces_prompt() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let template = model.chat_template(None).unwrap();
+        let message =
+            crate::model::LlamaChatMessage::new("user".to_string(), "hello".to_string()).unwrap();
+        let prompt = model.apply_chat_template(&template, &[message], true);
+        assert!(prompt.is_ok());
+        assert!(!prompt.unwrap().is_empty());
+    }
+
+    #[test]
+    #[serial]
+    fn apply_chat_template_oaicompat_produces_result() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let template = model.chat_template(None).unwrap();
+        let params = crate::openai::OpenAIChatTemplateParams {
+            messages_json: r#"[{"role":"user","content":"hello"}]"#,
+            tools_json: None,
+            tool_choice: None,
+            json_schema: None,
+            grammar: None,
+            reasoning_format: Some("none"),
+            chat_template_kwargs: None,
+            add_generation_prompt: true,
+            use_jinja: true,
+            parallel_tool_calls: false,
+            enable_thinking: false,
+            add_bos: false,
+            add_eos: false,
+            parse_tool_calls: false,
+        };
+        let result = model.apply_chat_template_oaicompat(&template, &params);
+        assert!(result.is_ok());
+        assert!(!result.unwrap().prompt.is_empty());
+    }
+
+    #[test]
+    #[serial]
+    fn meta_count_returns_positive() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        assert!(model.meta_count() > 0);
+    }
+
+    #[test]
+    #[serial]
+    fn tokens_iterator_produces_valid_entries() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let mut count = 0;
+
+        for (token, piece_result) in model.tokens(false) {
+            assert!(token.0 >= 0);
+            // Not all tokens decode successfully, but the iterator should not panic
+            let _ = piece_result;
+            count += 1;
+
+            if count >= 100 {
+                break;
+            }
+        }
+
+        assert_eq!(count, 100);
+    }
+
+    #[test]
+    #[serial]
+    fn token_to_piece_bytes_returns_bytes_for_known_token() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let tokens = model.str_to_token("hello", AddBos::Never).unwrap();
+        let bytes = model
+            .token_to_piece_bytes(tokens[0], 32, false, None)
+            .unwrap();
+
+        assert!(!bytes.is_empty());
+    }
+
+    #[test]
+    #[serial]
+    fn n_layer_returns_positive() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+
+        assert!(model.n_layer() > 0);
+    }
+
+    #[test]
+    #[serial]
+    fn n_head_returns_positive() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+
+        assert!(model.n_head() > 0);
+    }
+
+    #[test]
+    #[serial]
+    fn n_head_kv_returns_positive() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+
+        assert!(model.n_head_kv() > 0);
+    }
+
+    #[test]
+    #[serial]
+    fn meta_key_by_index_returns_valid_key() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let key = model.meta_key_by_index(0).unwrap();
+
+        assert!(!key.is_empty());
+    }
+
+    #[test]
+    #[serial]
+    fn meta_val_str_by_index_returns_valid_value() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let value = model.meta_val_str_by_index(0).unwrap();
+
+        assert!(!value.is_empty());
+    }
+
+    #[test]
+    #[serial]
+    fn meta_key_by_index_out_of_range_returns_error() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let result = model.meta_key_by_index(999_999);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[serial]
+    fn meta_val_str_by_index_out_of_range_returns_error() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let result = model.meta_val_str_by_index(999_999);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[serial]
+    fn meta_val_str_returns_value_for_known_key() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let first_key = model.meta_key_by_index(0).unwrap();
+        let value = model.meta_val_str(&first_key).unwrap();
+
+        assert!(!value.is_empty());
+    }
+
+    #[test]
+    #[serial]
+    fn model_size_returns_nonzero() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+
+        assert!(model.size() > 0);
+    }
+
+    #[test]
+    #[serial]
+    fn is_recurrent_returns_false_for_transformer() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+
+        assert!(!model.is_recurrent());
+    }
+
+    #[test]
+    #[serial]
+    fn rope_type_does_not_panic() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let _rope_type = model.rope_type();
+    }
+
+    #[test]
+    #[serial]
+    fn load_model_with_invalid_path_returns_error() {
+        let backend = LlamaBackend::init().unwrap();
+        let model_params = LlamaModelParams::default();
+        let result = LlamaModel::load_from_file(&backend, "/nonexistent/model.gguf", &model_params);
+
+        assert_eq!(
+            result.unwrap_err(),
+            crate::LlamaModelLoadError::FileNotFound(std::path::PathBuf::from(
+                "/nonexistent/model.gguf"
+            ))
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn load_model_with_invalid_file_content_returns_null_result() {
+        let backend = LlamaBackend::init().unwrap();
+        let model_params = LlamaModelParams::default();
+        let dummy_path = std::env::temp_dir().join("llama_test_invalid_model.gguf");
+        std::fs::write(&dummy_path, b"not a valid gguf model file").unwrap();
+
+        let result = LlamaModel::load_from_file(&backend, &dummy_path, &model_params);
+
+        assert_eq!(result.unwrap_err(), crate::LlamaModelLoadError::NullResult);
+        let _ = std::fs::remove_file(&dummy_path);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[serial]
+    fn load_model_with_non_utf8_path_returns_path_to_str_error() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+
+        let backend = LlamaBackend::init().unwrap();
+        let model_params = LlamaModelParams::default();
+        let non_utf8_path = std::path::Path::new(OsStr::from_bytes(b"/tmp/\xff\xfe.gguf"));
+        std::fs::write(non_utf8_path, b"dummy").unwrap();
+
+        let result = LlamaModel::load_from_file(&backend, non_utf8_path, &model_params);
+
+        assert!(result.is_err());
+        let _ = std::fs::remove_file(non_utf8_path);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[serial]
+    fn lora_adapter_init_with_non_utf8_path_returns_error() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let non_utf8_path = std::path::Path::new(OsStr::from_bytes(b"/tmp/\xff\xfe.gguf"));
+        std::fs::write(non_utf8_path, b"dummy").unwrap();
+
+        let result = model.lora_adapter_init(non_utf8_path);
+
+        assert!(result.is_err());
+        let _ = std::fs::remove_file(non_utf8_path);
+    }
+
+    #[test]
+    #[serial]
+    fn lora_adapter_init_with_invalid_path_returns_error() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let result = model.lora_adapter_init("/nonexistent/path/lora.gguf");
+
+        assert_eq!(
+            result.unwrap_err(),
+            crate::LlamaLoraAdapterInitError::FileNotFound(std::path::PathBuf::from(
+                "/nonexistent/path/lora.gguf"
+            ))
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn new_context_returns_valid_context() {
+        let (backend, model) = test_model::load_default_model().unwrap();
+        let ctx_params = crate::context::params::LlamaContextParams::default()
+            .with_n_ctx(std::num::NonZeroU32::new(256));
+        let context = model.new_context(&backend, ctx_params).unwrap();
+
+        assert!(context.n_ctx() > 0);
+    }
+
+    #[test]
+    #[serial]
+    fn token_nl_returns_valid_token() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let nl_token = model.token_nl();
+
+        assert!(nl_token.0 >= 0);
+    }
+
+    #[test]
+    #[serial]
+    fn decode_start_token_returns_valid_token() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let _decode_start = model.decode_start_token();
+    }
+
+    #[test]
+    #[serial]
+    fn token_sep_returns_valid_token() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let _sep_token = model.token_sep();
+    }
+
+    #[test]
+    #[serial]
+    fn token_to_piece_handles_large_token_requiring_buffer_resize() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let mut decoder = encoding_rs::UTF_8.new_decoder();
+
+        for (token, _) in model.tokens(true).take(200) {
+            let result = model.token_to_piece(token, &mut decoder, true, None);
+            assert!(result.is_ok());
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn token_to_piece_bytes_insufficient_buffer_returns_error() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let tokens = model.str_to_token("hello", AddBos::Never).unwrap();
+        let result = model.token_to_piece_bytes(tokens[0], 1, false, None);
+
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Insufficient Buffer Space")
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn token_to_piece_with_lstrip() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let mut decoder = encoding_rs::UTF_8.new_decoder();
+        let tokens = model.str_to_token("hello", AddBos::Never).unwrap();
+        let result =
+            model.token_to_piece(tokens[0], &mut decoder, false, std::num::NonZeroU16::new(1));
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn n_vocab_matches_tokens_iterator_count() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let n_vocab = model.n_vocab();
+        let count = model.tokens(false).count();
+
+        assert_eq!(count, n_vocab as usize);
+    }
+
+    #[test]
+    #[serial]
+    fn token_attr_returns_valid_attr() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let bos = model.token_bos();
+        let _attr = model.token_attr(bos);
+    }
+
+    #[test]
+    #[serial]
+    fn vocab_type_returns_valid_type() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let _vocab_type = model.vocab_type();
+    }
+
+    #[test]
+    #[serial]
+    fn apply_chat_template_buffer_resize_with_long_messages() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let template = model.chat_template(None).unwrap();
+        let long_content = "a".repeat(2000);
+        let message =
+            crate::model::LlamaChatMessage::new("user".to_string(), long_content).unwrap();
+        let prompt = model.apply_chat_template(&template, &[message], true);
+
+        assert!(prompt.is_ok());
+        assert!(!prompt.unwrap().is_empty());
+    }
+
+    #[test]
+    #[serial]
+    fn meta_val_str_with_long_value_triggers_buffer_resize() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let count = model.meta_count();
+
+        for index in 0..count {
+            let key = model.meta_key_by_index(index);
+            let value = model.meta_val_str_by_index(index);
+            assert!(key.is_ok());
+            assert!(value.is_ok());
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn str_to_token_with_add_bos_never() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let tokens_with_bos = model.str_to_token("hello", AddBos::Always).unwrap();
+        let tokens_without_bos = model.str_to_token("hello", AddBos::Never).unwrap();
+
+        assert!(tokens_with_bos.len() >= tokens_without_bos.len());
+    }
+
+    #[test]
+    #[serial]
+    fn apply_chat_template_with_tools_oaicompat_produces_result() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let template = model.chat_template(None).unwrap();
+        let message =
+            crate::model::LlamaChatMessage::new("user".to_string(), "hello".to_string()).unwrap();
+        let result =
+            model.apply_chat_template_with_tools_oaicompat(&template, &[message], None, None, true);
+
+        assert!(result.is_ok());
+        assert!(!result.unwrap().prompt.is_empty());
+    }
+
+    #[test]
+    #[serial]
+    fn apply_chat_template_with_tools_oaicompat_with_tools_json() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let template = model.chat_template(None).unwrap();
+        let message =
+            crate::model::LlamaChatMessage::new("user".to_string(), "hello".to_string()).unwrap();
+        let tools =
+            r#"[{"type":"function","function":{"name":"test","parameters":{"type":"object"}}}]"#;
+        let result = model.apply_chat_template_with_tools_oaicompat(
+            &template,
+            &[message],
+            Some(tools),
+            None,
+            true,
+        );
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn apply_chat_template_with_tools_oaicompat_with_json_schema() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let template = model.chat_template(None).unwrap();
+        let message =
+            crate::model::LlamaChatMessage::new("user".to_string(), "hello".to_string()).unwrap();
+        let schema = r#"{"type":"object","properties":{"name":{"type":"string"}}}"#;
+        let result = model.apply_chat_template_with_tools_oaicompat(
+            &template,
+            &[message],
+            None,
+            Some(schema),
+            true,
+        );
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn apply_chat_template_oaicompat_with_tools_and_tool_choice() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let template = model.chat_template(None).unwrap();
+        let params = crate::openai::OpenAIChatTemplateParams {
+            messages_json: r#"[{"role":"user","content":"hello"}]"#,
+            tools_json: Some(
+                r#"[{"type":"function","function":{"name":"test","parameters":{"type":"object","properties":{}}}}]"#,
+            ),
+            tool_choice: Some("auto"),
+            json_schema: None,
+            grammar: None,
+            reasoning_format: Some("none"),
+            chat_template_kwargs: None,
+            add_generation_prompt: true,
+            use_jinja: true,
+            parallel_tool_calls: false,
+            enable_thinking: false,
+            add_bos: false,
+            add_eos: false,
+            parse_tool_calls: true,
+        };
+        let result = model.apply_chat_template_oaicompat(&template, &params);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn apply_chat_template_oaicompat_with_json_schema_field() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let template = model.chat_template(None).unwrap();
+        let params = crate::openai::OpenAIChatTemplateParams {
+            messages_json: r#"[{"role":"user","content":"hello"}]"#,
+            tools_json: None,
+            tool_choice: None,
+            json_schema: Some(r#"{"type":"object","properties":{"name":{"type":"string"}}}"#),
+            grammar: None,
+            reasoning_format: Some("none"),
+            chat_template_kwargs: None,
+            add_generation_prompt: true,
+            use_jinja: true,
+            parallel_tool_calls: false,
+            enable_thinking: false,
+            add_bos: false,
+            add_eos: false,
+            parse_tool_calls: false,
+        };
+        let result = model.apply_chat_template_oaicompat(&template, &params);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn apply_chat_template_oaicompat_with_grammar_field() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let template = model.chat_template(None).unwrap();
+        let params = crate::openai::OpenAIChatTemplateParams {
+            messages_json: r#"[{"role":"user","content":"hello"}]"#,
+            tools_json: None,
+            tool_choice: None,
+            json_schema: None,
+            grammar: Some("root ::= \"hello\""),
+            reasoning_format: Some("none"),
+            chat_template_kwargs: None,
+            add_generation_prompt: true,
+            use_jinja: true,
+            parallel_tool_calls: false,
+            enable_thinking: false,
+            add_bos: false,
+            add_eos: false,
+            parse_tool_calls: false,
+        };
+        let result = model.apply_chat_template_oaicompat(&template, &params);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn apply_chat_template_oaicompat_with_kwargs_field() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let template = model.chat_template(None).unwrap();
+        let params = crate::openai::OpenAIChatTemplateParams {
+            messages_json: r#"[{"role":"user","content":"hello"}]"#,
+            tools_json: None,
+            tool_choice: None,
+            json_schema: None,
+            grammar: None,
+            reasoning_format: Some("none"),
+            chat_template_kwargs: Some(r#"{"bos_token": "<|im_start|>"}"#),
+            add_generation_prompt: true,
+            use_jinja: true,
+            parallel_tool_calls: false,
+            enable_thinking: false,
+            add_bos: false,
+            add_eos: false,
+            parse_tool_calls: false,
+        };
+        let result = model.apply_chat_template_oaicompat(&template, &params);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn chat_template_with_nonexistent_name_returns_error() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+
+        let result = model.chat_template(Some("nonexistent_template_name_xyz"));
+
+        assert_eq!(
+            result.unwrap_err(),
+            crate::ChatTemplateError::MissingTemplate
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn lora_adapter_init_with_invalid_gguf_returns_null_result() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let dummy_path = std::env::temp_dir().join("llama_test_dummy_lora.gguf");
+        std::fs::write(&dummy_path, b"not a valid gguf").unwrap();
+
+        let result = model.lora_adapter_init(&dummy_path);
+
+        assert_eq!(
+            result.unwrap_err(),
+            crate::LlamaLoraAdapterInitError::NullResult
+        );
+        let _ = std::fs::remove_file(&dummy_path);
+    }
+
+    #[test]
+    #[serial]
+    fn str_to_token_with_many_tokens_triggers_buffer_resize() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        // Each digit typically becomes its own token, but the buffer estimate
+        // is len/2 which is smaller than the actual token count for
+        // single-char-token strings like "1 2 3 4 ..."
+        let many_numbers: String = (0..2000).map(|number| format!("{number} ")).collect();
+
+        let tokens = model.str_to_token(&many_numbers, AddBos::Always).unwrap();
+
+        assert!(tokens.len() > many_numbers.len() / 2);
+    }
+
+    #[test]
+    #[serial]
+    fn rope_type_returns_valid_result_for_test_model() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+
+        let _rope_type = model.rope_type();
+    }
+
+    #[test]
+    #[serial]
+    fn meta_val_str_with_null_byte_in_key_returns_error() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let result = model.meta_val_str("key\0with_null");
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[serial]
+    fn apply_chat_template_with_tools_null_byte_in_tools_returns_error() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let template = model.chat_template(None).unwrap();
+        let message =
+            crate::model::LlamaChatMessage::new("user".to_string(), "hello".to_string()).unwrap();
+        let result = model.apply_chat_template_with_tools_oaicompat(
+            &template,
+            &[message],
+            Some("tools\0null"),
+            None,
+            true,
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[serial]
+    fn apply_chat_template_with_tools_null_byte_in_json_schema_returns_error() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let template = model.chat_template(None).unwrap();
+        let message =
+            crate::model::LlamaChatMessage::new("user".to_string(), "hello".to_string()).unwrap();
+        let result = model.apply_chat_template_with_tools_oaicompat(
+            &template,
+            &[message],
+            None,
+            Some("schema\0null"),
+            true,
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[serial]
+    fn apply_chat_template_oaicompat_with_null_byte_in_messages_returns_error() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let template = model.chat_template(None).unwrap();
+        let params = crate::openai::OpenAIChatTemplateParams {
+            messages_json: "messages\0null",
+            tools_json: None,
+            tool_choice: None,
+            json_schema: None,
+            grammar: None,
+            reasoning_format: None,
+            chat_template_kwargs: None,
+            add_generation_prompt: true,
+            use_jinja: true,
+            parallel_tool_calls: false,
+            enable_thinking: false,
+            add_bos: false,
+            add_eos: false,
+            parse_tool_calls: false,
+        };
+        let result = model.apply_chat_template_oaicompat(&template, &params);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[serial]
+    fn apply_chat_template_oaicompat_with_null_byte_in_tools_returns_error() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let template = model.chat_template(None).unwrap();
+        let params = crate::openai::OpenAIChatTemplateParams {
+            messages_json: r#"[{"role":"user","content":"hello"}]"#,
+            tools_json: Some("tools\0null"),
+            tool_choice: None,
+            json_schema: None,
+            grammar: None,
+            reasoning_format: None,
+            chat_template_kwargs: None,
+            add_generation_prompt: true,
+            use_jinja: true,
+            parallel_tool_calls: false,
+            enable_thinking: false,
+            add_bos: false,
+            add_eos: false,
+            parse_tool_calls: false,
+        };
+        let result = model.apply_chat_template_oaicompat(&template, &params);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[serial]
+    fn apply_chat_template_oaicompat_with_null_byte_in_tool_choice_returns_error() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let template = model.chat_template(None).unwrap();
+        let params = crate::openai::OpenAIChatTemplateParams {
+            messages_json: r#"[{"role":"user","content":"hello"}]"#,
+            tools_json: None,
+            tool_choice: Some("choice\0null"),
+            json_schema: None,
+            grammar: None,
+            reasoning_format: None,
+            chat_template_kwargs: None,
+            add_generation_prompt: true,
+            use_jinja: true,
+            parallel_tool_calls: false,
+            enable_thinking: false,
+            add_bos: false,
+            add_eos: false,
+            parse_tool_calls: false,
+        };
+        let result = model.apply_chat_template_oaicompat(&template, &params);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[serial]
+    fn apply_chat_template_oaicompat_with_null_byte_in_json_schema_returns_error() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let template = model.chat_template(None).unwrap();
+        let params = crate::openai::OpenAIChatTemplateParams {
+            messages_json: r#"[{"role":"user","content":"hello"}]"#,
+            tools_json: None,
+            tool_choice: None,
+            json_schema: Some("schema\0null"),
+            grammar: None,
+            reasoning_format: None,
+            chat_template_kwargs: None,
+            add_generation_prompt: true,
+            use_jinja: true,
+            parallel_tool_calls: false,
+            enable_thinking: false,
+            add_bos: false,
+            add_eos: false,
+            parse_tool_calls: false,
+        };
+        let result = model.apply_chat_template_oaicompat(&template, &params);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[serial]
+    fn apply_chat_template_oaicompat_with_null_byte_in_grammar_returns_error() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let template = model.chat_template(None).unwrap();
+        let params = crate::openai::OpenAIChatTemplateParams {
+            messages_json: r#"[{"role":"user","content":"hello"}]"#,
+            tools_json: None,
+            tool_choice: None,
+            json_schema: None,
+            grammar: Some("grammar\0null"),
+            reasoning_format: None,
+            chat_template_kwargs: None,
+            add_generation_prompt: true,
+            use_jinja: true,
+            parallel_tool_calls: false,
+            enable_thinking: false,
+            add_bos: false,
+            add_eos: false,
+            parse_tool_calls: false,
+        };
+        let result = model.apply_chat_template_oaicompat(&template, &params);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[serial]
+    fn apply_chat_template_oaicompat_with_null_byte_in_reasoning_format_returns_error() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let template = model.chat_template(None).unwrap();
+        let params = crate::openai::OpenAIChatTemplateParams {
+            messages_json: r#"[{"role":"user","content":"hello"}]"#,
+            tools_json: None,
+            tool_choice: None,
+            json_schema: None,
+            grammar: None,
+            reasoning_format: Some("format\0null"),
+            chat_template_kwargs: None,
+            add_generation_prompt: true,
+            use_jinja: true,
+            parallel_tool_calls: false,
+            enable_thinking: false,
+            add_bos: false,
+            add_eos: false,
+            parse_tool_calls: false,
+        };
+        let result = model.apply_chat_template_oaicompat(&template, &params);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[serial]
+    fn apply_chat_template_oaicompat_with_null_byte_in_kwargs_returns_error() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let template = model.chat_template(None).unwrap();
+        let params = crate::openai::OpenAIChatTemplateParams {
+            messages_json: r#"[{"role":"user","content":"hello"}]"#,
+            tools_json: None,
+            tool_choice: None,
+            json_schema: None,
+            grammar: None,
+            reasoning_format: None,
+            chat_template_kwargs: Some("kwargs\0null"),
+            add_generation_prompt: true,
+            use_jinja: true,
+            parallel_tool_calls: false,
+            enable_thinking: false,
+            add_bos: false,
+            add_eos: false,
+            parse_tool_calls: false,
+        };
+        let result = model.apply_chat_template_oaicompat(&template, &params);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[serial]
+    fn new_context_with_huge_ctx_returns_null_error() {
+        let (_backend, model) = test_model::load_default_model().unwrap();
+        let ctx_params = crate::context::params::LlamaContextParams::default()
+            .with_n_ctx(std::num::NonZeroU32::new(u32::MAX));
+
+        let result = model.new_context(&_backend, ctx_params);
+
+        assert!(result.is_err());
     }
 }

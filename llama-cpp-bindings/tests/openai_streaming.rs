@@ -10,24 +10,12 @@ use llama_cpp_bindings::llama_batch::LlamaBatch;
 use llama_cpp_bindings::model::params::LlamaModelParams;
 use llama_cpp_bindings::model::{AddBos, LlamaChatMessage, LlamaChatTemplate, LlamaModel};
 use llama_cpp_bindings::sampling::LlamaSampler;
+use llama_cpp_bindings::test_model;
 use serde_json::json;
-
-const HF_REPO: &str = "unsloth/Qwen3.5-0.8B-GGUF";
-const HF_MODEL: &str = "Qwen3.5-0.8B-Q4_K_M.gguf";
-
-fn download_model() -> Result<std::path::PathBuf> {
-    let path = hf_hub::api::sync::ApiBuilder::new()
-        .with_progress(true)
-        .build()?
-        .model(HF_REPO.to_string())
-        .get(HF_MODEL)?;
-
-    Ok(path)
-}
 
 #[test]
 fn streaming_deltas_produce_valid_chunks() -> Result<()> {
-    let model_path = download_model()?;
+    let model_path = test_model::download_model()?;
 
     let backend = LlamaBackend::init()?;
     let params = LlamaModelParams::default();

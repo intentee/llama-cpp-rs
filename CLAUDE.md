@@ -6,7 +6,11 @@ Keep it simple, be opinionated, follow best practices. Avoid using configurable 
 
 Keep the code beautiful. Always optimize the code for a great developer experience.
 
-Be proactive and fix preexistive issues if you encounter them.
+Be proactive and fix preexisting issues if you encounter them.
+
+Be uncompromising when it comes to the code quality and architecture. Any compromises, coverage gaps, or quality gaps are not acceptable.
+
+Never make assumptions or guesses about code behavior; always investigate. Always make sure everything works.
 
 ## Coding Standards
 
@@ -33,7 +37,7 @@ Be proactive and fix preexistive issues if you encounter them.
 - Add an empty line between loops and preceding statements from the same scope.
 - Handle all the errors; never ignore them. Make sure the application does not panic.
 - In Rust, never ignore errors with `Err(_)`; always make sure you are matching an expected error variant instead.
-- Never use `.expect`, or `.unwrap`. In Rust, if a function can fail, use a matching Result (can be from the anyhow crate) instead. In case of doubt on this, ask. Allow `.expect` in mutex lock poison checks, or when integrating CPP libraries into Rust.
+- Never use `.expect`, or `.unwrap`. In Rust, if a function can fail, use a matching Result (can be from the anyhow crate) instead. In case of doubt on this, ask. Allow `.expect` in mutex lock poison checks, unit tests, or when integrating CPP libraries into Rust, and there is no way to use Result instead.
 - Use object-oriented style and composition. Avoid functions that take a struct as a parameter; move it to the struct implementation instead.
 - Always make sure mutex locks are held for the shortest possible time.
 - Always specify Rust dependencies in root Cargo.toml, then use workspace versions of packages in workspace members.
@@ -41,6 +45,7 @@ Be proactive and fix preexistive issues if you encounter them.
 - Before using vendor crates or modules, make sure they are well-maintained, secure, and documented.
 - Always make sure there is only one valid way to do a specific task in the codebase. Make sure everything has a single source of truth.
 - In Rust, when implementing `new` method in a struct, prefer to use a struct with parameters list instead of multiple function arguments. It should be easier to maintain.
+- Use only the most precise error variants to cover a Result error case. If nothing suitable is available, add a new error variant.
 
 ## Unit Tests and Quality Control
 
