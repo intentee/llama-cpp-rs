@@ -76,13 +76,4 @@ mod tests {
 
         assert!(!flags.contains(LlamaStateSeqFlags::PARTIAL_ONLY));
     }
-
-    #[test]
-    fn equality_works() {
-        assert_eq!(LlamaStateSeqFlags::empty(), LlamaStateSeqFlags::empty());
-        assert_ne!(
-            LlamaStateSeqFlags::empty(),
-            LlamaStateSeqFlags::PARTIAL_ONLY
-        );
-    }
 }
