@@ -62,7 +62,13 @@ pub fn download_model() -> Result<PathBuf> {
 /// # Errors
 /// Returns an error if the required environment variables are not set or the download fails.
 pub fn download_mmproj() -> Result<PathBuf> {
-    download_file(&hf_repo()?, &hf_mmproj())
+    let mmproj = hf_mmproj();
+
+    if mmproj.is_empty() {
+        anyhow::bail!("LLAMA_TEST_HF_MMPROJ is not set or empty");
+    }
+
+    download_file(&hf_repo()?, &mmproj)
 }
 
 /// Downloads the configured embedding model from Hugging Face.

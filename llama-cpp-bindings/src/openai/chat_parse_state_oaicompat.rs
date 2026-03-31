@@ -26,10 +26,14 @@ const fn check_not_null_with_count(
     }
 }
 
-const fn diffs_as_slice(
+/// # Safety
+///
+/// `diffs_ptr` must point to at least `count` valid `llama_rs_chat_msg_diff_oaicompat`
+/// values that remain valid for the lifetime `'diffs`.
+const unsafe fn diffs_as_slice<'diffs>(
     diffs_ptr: *const llama_cpp_bindings_sys::llama_rs_chat_msg_diff_oaicompat,
     count: usize,
-) -> &'static [llama_cpp_bindings_sys::llama_rs_chat_msg_diff_oaicompat] {
+) -> &'diffs [llama_cpp_bindings_sys::llama_rs_chat_msg_diff_oaicompat] {
     if count == 0 {
         &[]
     } else {
@@ -72,9 +76,6 @@ impl ChatParseStateOaicompat {
     ///
     /// # Errors
     /// Returns an error if the FFI call fails or the result is null.
-    ///
-    /// # Panics
-    /// Panics if a JSON delta returned by llama.cpp is not valid UTF-8.
     pub fn update(
         &mut self,
         text_added: &str,
@@ -101,7 +102,7 @@ impl ChatParseStateOaicompat {
             check_ffi_status(rc)?;
             check_not_null_with_count(out_diffs, out_diffs_count)?;
 
-            let diffs = diffs_as_slice(out_diffs, out_diffs_count);
+            let diffs = unsafe { diffs_as_slice(out_diffs, out_diffs_count) };
             let mut deltas = Vec::with_capacity(diffs.len());
 
             for diff in diffs {
@@ -117,9 +118,7 @@ impl ChatParseStateOaicompat {
 
                 let bytes = unsafe { CStr::from_ptr(out_json) }.to_bytes().to_vec();
                 unsafe { llama_cpp_bindings_sys::llama_rs_string_free(out_json) };
-                deltas.push(
-                    String::from_utf8(bytes).expect("JSON from llama.cpp should be valid UTF-8"),
-                );
+                deltas.push(String::from_utf8(bytes)?);
             }
 
             Ok(deltas)
@@ -227,7 +226,7 @@ mod tests {
 
     #[test]
     fn diffs_as_slice_returns_empty_for_zero_count() {
-        let result = super::diffs_as_slice(std::ptr::null(), 0);
+        let result = unsafe { super::diffs_as_slice(std::ptr::null(), 0) };
 
         assert!(result.is_empty());
     }

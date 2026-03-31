@@ -13,7 +13,7 @@ use crate::token::data::LlamaTokenData;
 use crate::token::data_array::LlamaTokenDataArray;
 use crate::{
     DecodeError, EmbeddingsError, EncodeError, LlamaLoraAdapterRemoveError,
-    LlamaLoraAdapterSetError,
+    LlamaLoraAdapterSetError, LogitsError,
 };
 
 const fn check_lora_set_result(err_code: i32) -> Result<(), LlamaLoraAdapterSetError> {
@@ -160,16 +160,13 @@ impl<'model> LlamaContext<'model> {
     /// - If the current model had a pooling type of [`llama_cpp_bindings_sys::LLAMA_POOLING_TYPE_NONE`]
     /// - If the given sequence index exceeds the max sequence id.
     ///
-    /// # Panics
-    ///
-    /// * `n_embd` does not fit into a usize
     pub fn embeddings_seq_ith(&self, sequence_index: i32) -> Result<&[f32], EmbeddingsError> {
         if !self.embeddings_enabled {
             return Err(EmbeddingsError::NotEnabled);
         }
 
-        let n_embd =
-            usize::try_from(self.model.n_embd()).expect("n_embd does not fit into a usize");
+        let n_embd = usize::try_from(self.model.n_embd())
+            .map_err(EmbeddingsError::InvalidEmbeddingDimension)?;
 
         unsafe {
             let embedding = llama_cpp_bindings_sys::llama_get_embeddings_seq(
@@ -198,16 +195,13 @@ impl<'model> LlamaContext<'model> {
     /// - When the given token didn't have logits enabled when it was passed.
     /// - If the given token index exceeds the max token id.
     ///
-    /// # Panics
-    ///
-    /// * `n_embd` does not fit into a usize
     pub fn embeddings_ith(&self, token_index: i32) -> Result<&[f32], EmbeddingsError> {
         if !self.embeddings_enabled {
             return Err(EmbeddingsError::NotEnabled);
         }
 
-        let n_embd =
-            usize::try_from(self.model.n_embd()).expect("n_embd does not fit into a usize");
+        let n_embd = usize::try_from(self.model.n_embd())
+            .map_err(EmbeddingsError::InvalidEmbeddingDimension)?;
 
         unsafe {
             let embedding = llama_cpp_bindings_sys::llama_get_embeddings_ith(
@@ -229,23 +223,23 @@ impl<'model> LlamaContext<'model> {
     /// An iterator over unsorted `LlamaTokenData` containing the
     /// logits for the last token in the context.
     ///
-    pub fn candidates(&self) -> impl Iterator<Item = LlamaTokenData> + '_ {
-        (0_i32..).zip(self.get_logits()).map(|(token_id, logit)| {
+    /// # Errors
+    /// Returns `LogitsError` if logits are null or `n_vocab` overflows.
+    pub fn candidates(&self) -> Result<impl Iterator<Item = LlamaTokenData> + '_, LogitsError> {
+        let logits = self.get_logits()?;
+
+        Ok((0_i32..).zip(logits).map(|(token_id, logit)| {
             let token = LlamaToken::new(token_id);
             LlamaTokenData::new(token, *logit, 0_f32)
-        })
+        }))
     }
 
     /// Get the token data array for the last token in the context.
     ///
-    /// This is a convenience method that implements:
-    /// ```ignore
-    /// LlamaTokenDataArray::from_iter(ctx.candidates(), false)
-    /// ```
-    ///
-    #[must_use]
-    pub fn token_data_array(&self) -> LlamaTokenDataArray {
-        LlamaTokenDataArray::from_iter(self.candidates(), false)
+    /// # Errors
+    /// Returns `LogitsError` if logits are null or `n_vocab` overflows.
+    pub fn token_data_array(&self) -> Result<LlamaTokenDataArray, LogitsError> {
+        Ok(LlamaTokenDataArray::from_iter(self.candidates()?, false))
     }
 
     /// Token logits obtained from the last call to `decode()`.
@@ -259,67 +253,75 @@ impl<'model> LlamaContext<'model> {
     /// A slice containing the logits for the last decoded token.
     /// The size corresponds to the `n_vocab` parameter of the context's model.
     ///
-    /// # Panics
-    ///
-    /// Panics if the logits data pointer is null or `n_vocab` does not fit into a `usize`.
-    #[must_use]
-    pub fn get_logits(&self) -> &[f32] {
+    /// # Errors
+    /// Returns `LogitsError` if the logits pointer is null or `n_vocab` overflows.
+    pub fn get_logits(&self) -> Result<&[f32], LogitsError> {
         let data = unsafe { llama_cpp_bindings_sys::llama_get_logits(self.context.as_ptr()) };
-        assert!(!data.is_null(), "logits data for last token is null");
-        let len = usize::try_from(self.model.n_vocab()).expect("n_vocab does not fit into a usize");
 
-        unsafe { slice::from_raw_parts(data, len) }
+        if data.is_null() {
+            return Err(LogitsError::NullLogits);
+        }
+
+        let len = usize::try_from(self.model.n_vocab()).map_err(LogitsError::VocabSizeOverflow)?;
+
+        Ok(unsafe { slice::from_raw_parts(data, len) })
     }
 
     /// Get the logits for the ith token in the context.
     ///
-    /// # Panics
-    ///
-    /// - logit `i` is not initialized.
-    pub fn candidates_ith(&self, token_index: i32) -> impl Iterator<Item = LlamaTokenData> + '_ {
-        (0_i32..)
-            .zip(self.get_logits_ith(token_index))
-            .map(|(token_id, logit)| {
-                let token = LlamaToken::new(token_id);
-                LlamaTokenData::new(token, *logit, 0_f32)
-            })
+    /// # Errors
+    /// Returns `LogitsError` if the token is not initialized or out of range.
+    pub fn candidates_ith(
+        &self,
+        token_index: i32,
+    ) -> Result<impl Iterator<Item = LlamaTokenData> + '_, LogitsError> {
+        let logits = self.get_logits_ith(token_index)?;
+
+        Ok((0_i32..).zip(logits).map(|(token_id, logit)| {
+            let token = LlamaToken::new(token_id);
+            LlamaTokenData::new(token, *logit, 0_f32)
+        }))
     }
 
     /// Get the token data array for the ith token in the context.
     ///
-    /// This is a convenience method that implements:
-    /// ```ignore
-    /// LlamaTokenDataArray::from_iter(ctx.candidates_ith(token_index), false)
-    /// ```
-    ///
-    /// # Panics
-    ///
-    /// - logit `i` is not initialized.
-    #[must_use]
-    pub fn token_data_array_ith(&self, token_index: i32) -> LlamaTokenDataArray {
-        LlamaTokenDataArray::from_iter(self.candidates_ith(token_index), false)
+    /// # Errors
+    /// Returns `LogitsError` if the token is not initialized or out of range.
+    pub fn token_data_array_ith(
+        &self,
+        token_index: i32,
+    ) -> Result<LlamaTokenDataArray, LogitsError> {
+        Ok(LlamaTokenDataArray::from_iter(
+            self.candidates_ith(token_index)?,
+            false,
+        ))
     }
 
     /// Get the logits for the ith token in the context.
     ///
-    /// # Panics
-    ///
-    /// - `token_index` is greater than `n_ctx`
-    /// - `n_vocab` does not fit into a usize
-    /// - logit `token_index` is not initialized.
-    #[must_use]
-    pub fn get_logits_ith(&self, token_index: i32) -> &[f32] {
-        assert!(self.initialized_logits.contains(&token_index));
-        assert!(
-            self.n_ctx() > u32::try_from(token_index).expect("token_index does not fit into a u32")
-        );
+    /// # Errors
+    /// Returns `LogitsError` if the token is not initialized, out of range, or `n_vocab` overflows.
+    pub fn get_logits_ith(&self, token_index: i32) -> Result<&[f32], LogitsError> {
+        if !self.initialized_logits.contains(&token_index) {
+            return Err(LogitsError::TokenNotInitialized(token_index));
+        }
+
+        let token_index_u32 =
+            u32::try_from(token_index).map_err(LogitsError::TokenIndexOverflow)?;
+
+        if self.n_ctx() <= token_index_u32 {
+            return Err(LogitsError::TokenIndexExceedsContext {
+                token_index: token_index_u32,
+                context_size: self.n_ctx(),
+            });
+        }
 
         let data = unsafe {
             llama_cpp_bindings_sys::llama_get_logits_ith(self.context.as_ptr(), token_index)
         };
-        let len = usize::try_from(self.model.n_vocab()).expect("n_vocab does not fit into a usize");
+        let len = usize::try_from(self.model.n_vocab()).map_err(LogitsError::VocabSizeOverflow)?;
 
-        unsafe { slice::from_raw_parts(data, len) }
+        Ok(unsafe { slice::from_raw_parts(data, len) })
     }
 
     /// Reset the timings for the context.
@@ -458,7 +460,7 @@ mod tests {
         let decode_result = context.decode(&mut batch);
         assert!(decode_result.is_ok());
 
-        let logits = context.get_logits();
+        let logits = context.get_logits().unwrap();
         assert!(!logits.is_empty());
     }
 
@@ -484,7 +486,7 @@ mod tests {
         batch.add_sequence(&tokens, 0, false).unwrap();
         context.decode(&mut batch).unwrap();
 
-        let token_data_array = context.token_data_array();
+        let token_data_array = context.token_data_array().unwrap();
 
         assert!(!token_data_array.data.is_empty());
     }
@@ -501,7 +503,7 @@ mod tests {
         batch.add_sequence(&tokens, 0, false).unwrap();
         context.decode(&mut batch).unwrap();
 
-        let logits = context.get_logits_ith(last_index);
+        let logits = context.get_logits_ith(last_index).unwrap();
 
         assert_eq!(logits.len(), model.n_vocab() as usize);
     }
@@ -518,7 +520,7 @@ mod tests {
         batch.add_sequence(&tokens, 0, false).unwrap();
         context.decode(&mut batch).unwrap();
 
-        let token_data_array = context.token_data_array_ith(last_index);
+        let token_data_array = context.token_data_array_ith(last_index).unwrap();
 
         assert_eq!(token_data_array.data.len(), model.n_vocab() as usize);
     }
@@ -562,7 +564,7 @@ mod tests {
         batch.add_sequence(&tokens, 0, false).unwrap();
         context.decode(&mut batch).unwrap();
 
-        let count = context.candidates().count();
+        let count = context.candidates().unwrap().count();
 
         assert_eq!(count, model.n_vocab() as usize);
     }
@@ -644,7 +646,7 @@ mod tests {
         batch.add_sequence(&tokens, 0, false).unwrap();
         context.decode(&mut batch).unwrap();
 
-        let count = context.candidates_ith(last_index).count();
+        let count = context.candidates_ith(last_index).unwrap().count();
 
         assert_eq!(count, model.n_vocab() as usize);
     }

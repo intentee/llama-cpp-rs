@@ -18,7 +18,7 @@ pub enum KvCacheConversionError {
     P1TooLarge(#[source] TryFromIntError),
     /// The operation is not supported by the current model/context configuration.
     #[error("operation not supported by this model: {0}")]
-    UnsupportedOperation(&'static str),
+    UnsupportedOperation(String),
 }
 
 impl LlamaContext<'_> {
@@ -158,9 +158,10 @@ impl LlamaContext<'_> {
         if crate::status_is_ok(status) {
             Ok(())
         } else {
-            Err(KvCacheConversionError::UnsupportedOperation(
-                "seq_add requires n_pos_per_embd == 1",
-            ))
+            Err(KvCacheConversionError::UnsupportedOperation(format!(
+                "kv_cache_seq_add failed (status {})",
+                crate::status_to_i32(status)
+            )))
         }
     }
 
@@ -208,9 +209,10 @@ impl LlamaContext<'_> {
         if crate::status_is_ok(status) {
             Ok(())
         } else {
-            Err(KvCacheConversionError::UnsupportedOperation(
-                "seq_div requires n_pos_per_embd == 1",
-            ))
+            Err(KvCacheConversionError::UnsupportedOperation(format!(
+                "kv_cache_seq_div failed (status {})",
+                crate::status_to_i32(status)
+            )))
         }
     }
 

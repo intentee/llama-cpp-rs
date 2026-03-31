@@ -92,8 +92,7 @@ unsafe fn parse_raw_cstr_array(
             return Err(ApplyChatTemplateError::InvalidGrammarTriggerType);
         }
         let bytes = unsafe { CStr::from_ptr(*entry) }.to_bytes().to_vec();
-        parsed
-            .push(String::from_utf8(bytes).expect("C string from llama.cpp should be valid UTF-8"));
+        parsed.push(String::from_utf8(bytes)?);
     }
 
     Ok(parsed)
@@ -129,7 +128,7 @@ unsafe fn parse_raw_grammar_triggers(
             return Err(ApplyChatTemplateError::InvalidGrammarTriggerType);
         } else {
             let bytes = unsafe { CStr::from_ptr(trigger.value) }.to_bytes().to_vec();
-            String::from_utf8(bytes).expect("C string from llama.cpp should be valid UTF-8")
+            String::from_utf8(bytes)?
         };
         let token = if trigger_type == GrammarTriggerType::Token {
             Some(LlamaToken(trigger.token))
@@ -152,9 +151,6 @@ unsafe fn parse_raw_grammar_triggers(
 ///
 /// # Errors
 /// Returns `ApplyChatTemplateError` if the FFI call failed or the result could not be parsed.
-///
-/// # Panics
-/// Panics if prompt, grammar, or parser strings returned by llama.cpp are not valid UTF-8.
 pub unsafe fn parse_chat_template_raw_result(
     ffi_return_code: llama_cpp_bindings_sys::llama_rs_status,
     raw_result: *mut llama_cpp_bindings_sys::llama_rs_chat_template_result,
@@ -174,27 +170,20 @@ pub unsafe fn parse_chat_template_raw_result(
         }
 
         let prompt_bytes = unsafe { CStr::from_ptr(raw.prompt) }.to_bytes().to_vec();
-        let prompt =
-            String::from_utf8(prompt_bytes).expect("prompt from llama.cpp should be valid UTF-8");
+        let prompt = String::from_utf8(prompt_bytes)?;
 
         let grammar = if raw.grammar.is_null() {
             None
         } else {
             let grammar_bytes = unsafe { CStr::from_ptr(raw.grammar) }.to_bytes().to_vec();
-            Some(
-                String::from_utf8(grammar_bytes)
-                    .expect("grammar from llama.cpp should be valid UTF-8"),
-            )
+            Some(String::from_utf8(grammar_bytes)?)
         };
 
         let parser = if raw.parser.is_null() {
             None
         } else {
             let parser_bytes = unsafe { CStr::from_ptr(raw.parser) }.to_bytes().to_vec();
-            Some(
-                String::from_utf8(parser_bytes)
-                    .expect("parser from llama.cpp should be valid UTF-8"),
-            )
+            Some(String::from_utf8(parser_bytes)?)
         };
 
         let grammar_triggers = unsafe {
@@ -231,9 +220,6 @@ impl ChatTemplateResult {
     ///
     /// # Errors
     /// Returns an error if the FFI call fails or the result is null.
-    ///
-    /// # Panics
-    /// Panics if the JSON returned by llama.cpp is not valid UTF-8.
     pub fn parse_response_oaicompat(
         &self,
         text: &str,
@@ -259,7 +245,7 @@ impl ChatTemplateResult {
             check_chat_parse_status(rc)?;
             check_chat_parse_not_null(out_json)?;
             let bytes = unsafe { CStr::from_ptr(out_json) }.to_bytes().to_vec();
-            Ok(String::from_utf8(bytes).expect("JSON from llama.cpp should be valid UTF-8"))
+            Ok(String::from_utf8(bytes)?)
         })();
 
         unsafe { llama_cpp_bindings_sys::llama_rs_string_free(out_json) };

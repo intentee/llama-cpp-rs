@@ -7,10 +7,14 @@ use crate::token::LlamaToken;
 use super::mtmd_error::MtmdInputChunkError;
 use super::mtmd_input_chunk_type::{MtmdInputChunkType, MtmdInputChunkTypeError};
 
-fn tokens_from_raw_ptr(
+/// # Safety
+///
+/// `tokens_ptr` must point to at least `n_tokens` valid `llama_token` values
+/// that remain valid for the lifetime `'chunk`.
+unsafe fn tokens_from_raw_ptr<'chunk>(
     tokens_ptr: *const llama_cpp_bindings_sys::llama_token,
     n_tokens: usize,
-) -> Option<&'static [LlamaToken]> {
+) -> Option<&'chunk [LlamaToken]> {
     if tokens_ptr.is_null() || n_tokens == 0 {
         None
     } else {
@@ -63,7 +67,7 @@ impl MtmdInputChunk {
             )
         };
 
-        tokens_from_raw_ptr(tokens_ptr, n_tokens)
+        unsafe { tokens_from_raw_ptr(tokens_ptr, n_tokens) }
     }
 
     /// Get the number of tokens in this chunk
@@ -121,19 +125,19 @@ mod unit_tests {
 
     #[test]
     fn tokens_from_raw_ptr_returns_none_for_null() {
-        assert!(tokens_from_raw_ptr(std::ptr::null(), 5).is_none());
+        assert!(unsafe { tokens_from_raw_ptr(std::ptr::null(), 5) }.is_none());
     }
 
     #[test]
     fn tokens_from_raw_ptr_returns_none_for_zero_count() {
         let token: llama_cpp_bindings_sys::llama_token = 42;
-        assert!(tokens_from_raw_ptr(&token, 0).is_none());
+        assert!(unsafe { tokens_from_raw_ptr(&token, 0) }.is_none());
     }
 
     #[test]
     fn tokens_from_raw_ptr_returns_some_for_valid() {
         let tokens: [llama_cpp_bindings_sys::llama_token; 2] = [1, 2];
-        let result = tokens_from_raw_ptr(tokens.as_ptr(), 2);
+        let result = unsafe { tokens_from_raw_ptr(tokens.as_ptr(), 2) };
 
         assert!(result.is_some());
         assert_eq!(result.unwrap().len(), 2);

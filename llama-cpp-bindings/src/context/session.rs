@@ -137,10 +137,6 @@ impl LlamaContext<'_> {
     /// # Errors
     ///
     /// Fails if the path is not a valid utf8 or llama.cpp fails to save the state file.
-    ///
-    /// # Panics
-    ///
-    /// Panics if a valid UTF-8 path somehow contains interior null bytes (should never happen).
     pub fn state_save_file(
         &self,
         path_session: impl AsRef<Path>,
@@ -151,7 +147,7 @@ impl LlamaContext<'_> {
             .to_str()
             .ok_or_else(|| SaveSessionError::PathToStrError(path.to_path_buf()))?;
 
-        let cstr = CString::new(path).expect("valid UTF-8 path cannot contain null bytes");
+        let cstr = CString::new(path)?;
 
         if unsafe {
             llama_cpp_bindings_sys::llama_state_save_file(
@@ -184,10 +180,6 @@ impl LlamaContext<'_> {
     /// # Errors
     ///
     /// Fails if the path is not a valid utf8 or llama.cpp fails to load the state file.
-    ///
-    /// # Panics
-    ///
-    /// Panics if a valid UTF-8 path somehow contains interior null bytes (should never happen).
     pub fn state_load_file(
         &mut self,
         path_session: impl AsRef<Path>,
@@ -198,7 +190,7 @@ impl LlamaContext<'_> {
             .to_str()
             .ok_or_else(|| LoadSessionError::PathToStrError(path.to_path_buf()))?;
 
-        let cstr = CString::new(path).expect("valid UTF-8 path cannot contain null bytes");
+        let cstr = CString::new(path)?;
         let mut tokens: Vec<LlamaToken> = Vec::with_capacity(max_tokens);
         let mut n_out = 0;
 
@@ -234,10 +226,6 @@ impl LlamaContext<'_> {
     ///
     /// Fails if the path is not a valid utf8 or llama.cpp fails to save the sequence state file.
     ///
-    /// # Panics
-    ///
-    /// Panics if a valid UTF-8 path somehow contains interior null bytes (should never happen).
-    ///
     /// # Returns
     ///
     /// The number of bytes written on success.
@@ -252,7 +240,7 @@ impl LlamaContext<'_> {
             .to_str()
             .ok_or_else(|| SaveSeqStateError::PathToStrError(path.to_path_buf()))?;
 
-        let cstr = CString::new(path).expect("valid UTF-8 path cannot contain null bytes");
+        let cstr = CString::new(path)?;
 
         let bytes_written = unsafe {
             llama_cpp_bindings_sys::llama_state_seq_save_file(
@@ -288,10 +276,6 @@ impl LlamaContext<'_> {
     ///
     /// Fails if the path is not a valid utf8 or llama.cpp fails to load the sequence state file.
     ///
-    /// # Panics
-    ///
-    /// Panics if a valid UTF-8 path somehow contains interior null bytes (should never happen).
-    ///
     /// # Returns
     ///
     /// A tuple of `(tokens, bytes_read)` on success.
@@ -306,7 +290,7 @@ impl LlamaContext<'_> {
             .to_str()
             .ok_or_else(|| LoadSeqStateError::PathToStrError(path.to_path_buf()))?;
 
-        let cstr = CString::new(path).expect("valid UTF-8 path cannot contain null bytes");
+        let cstr = CString::new(path)?;
         let mut tokens: Vec<LlamaToken> = Vec::with_capacity(max_tokens);
         let mut n_out = 0;
 

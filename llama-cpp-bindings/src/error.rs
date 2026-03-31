@@ -129,6 +129,34 @@ pub enum EmbeddingsError {
     /// The given sequence index exceeds the max sequence id
     #[error("Can't use sequence embeddings with a model supporting only LLAMA_POOLING_TYPE_NONE")]
     NonePoolType,
+    /// The embedding dimension does not fit into a usize.
+    #[error("Invalid embedding dimension: {0}")]
+    InvalidEmbeddingDimension(#[source] std::num::TryFromIntError),
+}
+
+/// When logits-related functions fail
+#[derive(Debug, Eq, PartialEq, thiserror::Error)]
+pub enum LogitsError {
+    /// The logits data pointer is null.
+    #[error("logits data pointer is null")]
+    NullLogits,
+    /// The requested token index has not been initialized for logits.
+    #[error("logit for token index {0} is not initialized")]
+    TokenNotInitialized(i32),
+    /// The token index exceeds the context size.
+    #[error("token index {token_index} exceeds context size {context_size}")]
+    TokenIndexExceedsContext {
+        /// The token index that was requested.
+        token_index: u32,
+        /// The context size.
+        context_size: u32,
+    },
+    /// The vocabulary size does not fit into a usize.
+    #[error("n_vocab does not fit into usize: {0}")]
+    VocabSizeOverflow(#[source] std::num::TryFromIntError),
+    /// The token index does not fit into a u32.
+    #[error("token_index does not fit into u32: {0}")]
+    TokenIndexOverflow(#[source] std::num::TryFromIntError),
 }
 
 /// Errors that can occur when initializing a grammar sampler
@@ -250,6 +278,9 @@ pub enum TokenToStringError {
     /// The token was not valid utf8.
     #[error("FromUtf8Error {0}")]
     FromUtf8Error(#[from] FromUtf8Error),
+    /// An integer conversion failed.
+    #[error("Integer conversion error: {0}")]
+    IntConversionError(#[from] std::num::TryFromIntError),
 }
 
 /// Failed to convert a string to a token sequence.
@@ -289,6 +320,9 @@ pub enum ApplyChatTemplateError {
     /// invalid grammar trigger data returned by llama.cpp.
     #[error("invalid grammar trigger data")]
     InvalidGrammarTriggerType,
+    /// An integer conversion failed.
+    #[error("Integer conversion error: {0}")]
+    IntConversionError(#[from] std::num::TryFromIntError),
 }
 
 /// Failed to parse a chat response.

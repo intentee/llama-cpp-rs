@@ -183,8 +183,7 @@ impl LlamaModel {
         let mut buffer: Vec<LlamaToken> = Vec::with_capacity(tokens_estimation);
 
         let (c_string, c_string_len) = cstring_with_validated_len(str)?;
-        let buffer_capacity =
-            c_int::try_from(buffer.capacity()).expect("buffer capacity should fit into a c_int");
+        let buffer_capacity = c_int::try_from(buffer.capacity())?;
 
         let size = unsafe {
             llama_cpp_bindings_sys::llama_tokenize(
@@ -219,7 +218,7 @@ impl LlamaModel {
             size
         };
 
-        let size = usize::try_from(size).expect("size is positive and fits into usize");
+        let size = usize::try_from(size)?;
 
         // SAFETY: `size` < `capacity` and llama-cpp has initialized elements up to `size`
         unsafe { buffer.set_len(size) }
@@ -293,11 +292,7 @@ impl LlamaModel {
     ///
     /// - if the token type is unknown
     /// - the resultant token is larger than `buffer_size`.
-    ///
-    /// # Panics
-    ///
-    /// - if `buffer_size` does not fit into a [`c_int`].
-    /// - if the returned size from llama-cpp does not fit into a [`usize`]. (this should never happen)
+    #[allow(clippy::missing_panics_doc)]
     pub fn token_to_piece_bytes(
         &self,
         token: LlamaToken,
@@ -308,7 +303,7 @@ impl LlamaModel {
         // SAFETY: `*` (0x2A) is never `\0`, so CString::new cannot fail here
         let string = CString::new(vec![b'*'; buffer_size]).expect("no null");
         let len = string.as_bytes().len();
-        let len = c_int::try_from(len).expect("length fits into c_int");
+        let len = c_int::try_from(len)?;
         let buf = string.into_raw();
         let lstrip = lstrip.map_or(0, |strip_count| i32::from(strip_count.get()));
         let size = unsafe {
@@ -553,7 +548,7 @@ impl LlamaModel {
             return Err(LlamaModelLoadError::FileNotFound(path.to_path_buf()));
         }
 
-        let cstr = CString::new(path_str).expect("valid UTF-8 path cannot contain null bytes");
+        let cstr = CString::new(path_str)?;
         let llama_model = unsafe {
             llama_cpp_bindings_sys::llama_load_model_from_file(cstr.as_ptr(), params.params)
         };
@@ -574,10 +569,6 @@ impl LlamaModel {
     /// # Errors
     ///
     /// See [`LlamaLoraAdapterInitError`] for more information.
-    ///
-    /// # Panics
-    ///
-    /// Panics if a valid UTF-8 path somehow contains interior null bytes (should never happen).
     pub fn lora_adapter_init(
         &self,
         path: impl AsRef<Path>,
@@ -592,7 +583,7 @@ impl LlamaModel {
             return Err(LlamaLoraAdapterInitError::FileNotFound(path.to_path_buf()));
         }
 
-        let cstr = CString::new(path_str).expect("valid UTF-8 path cannot contain null bytes");
+        let cstr = CString::new(path_str)?;
         let raw_adapter = unsafe {
             llama_cpp_bindings_sys::llama_adapter_lora_init(self.model.as_ptr(), cstr.as_ptr())
         };
@@ -647,9 +638,6 @@ impl LlamaModel {
     ///
     /// # Errors
     /// There are many ways this can fail. See [`ApplyChatTemplateError`] for more information.
-    ///
-    /// # Panics
-    /// Panics if the buffer size exceeds `i32::MAX`.
     #[tracing::instrument(skip_all)]
     pub fn apply_chat_template(
         &self,
@@ -672,6 +660,8 @@ impl LlamaModel {
 
         let tmpl_ptr = tmpl.0.as_ptr();
 
+        let buff_len: i32 = buff.len().try_into()?;
+
         let res = unsafe {
             llama_cpp_bindings_sys::llama_chat_apply_template(
                 tmpl_ptr,
@@ -679,12 +669,15 @@ impl LlamaModel {
                 chat.len(),
                 add_ass,
                 buff.as_mut_ptr().cast::<c_char>(),
-                buff.len().try_into().expect("Buffer size exceeds i32::MAX"),
+                buff_len,
             )
         };
 
-        if res > buff.len().try_into().expect("Buffer size exceeds i32::MAX") {
-            buff.resize(res.try_into().expect("res is negative"), 0);
+        if res > buff_len {
+            let required_size: usize = res.try_into()?;
+            buff.resize(required_size, 0);
+
+            let new_buff_len: i32 = buff.len().try_into()?;
 
             let res = unsafe {
                 llama_cpp_bindings_sys::llama_chat_apply_template(
@@ -693,12 +686,17 @@ impl LlamaModel {
                     chat.len(),
                     add_ass,
                     buff.as_mut_ptr().cast::<c_char>(),
-                    buff.len().try_into().expect("Buffer size exceeds i32::MAX"),
+                    new_buff_len,
                 )
             };
-            assert_eq!(Ok(res), buff.len().try_into());
+            let final_size: usize = res.try_into()?;
+
+            return truncated_buffer_to_string(buff, final_size);
         }
-        truncated_buffer_to_string(buff, res.try_into().expect("res is negative"))
+
+        let final_size: usize = res.try_into()?;
+
+        truncated_buffer_to_string(buff, final_size)
     }
 
     /// Apply the models chat template to some messages and return an optional tool grammar.
