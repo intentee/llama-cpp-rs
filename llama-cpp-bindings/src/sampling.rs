@@ -77,8 +77,8 @@ impl LlamaSampler {
                 self.sampler,
                 ctx.context.as_ptr(),
                 idx,
-                &mut token,
-                &mut error_ptr,
+                &raw mut token,
+                &raw mut error_ptr,
             )
         };
 
@@ -145,7 +145,11 @@ impl LlamaSampler {
         let mut error_ptr: *mut c_char = std::ptr::null_mut();
 
         let status = unsafe {
-            llama_cpp_bindings_sys::llama_rs_sampler_accept(self.sampler, token.0, &mut error_ptr)
+            llama_cpp_bindings_sys::llama_rs_sampler_accept(
+                self.sampler,
+                token.0,
+                &raw mut error_ptr,
+            )
         };
 
         check_sampler_accept_status(status, error_ptr)
@@ -381,7 +385,7 @@ impl LlamaSampler {
                 model.vocab_ptr(),
                 grammar_str.as_ptr(),
                 grammar_root.as_ptr(),
-                &mut error_ptr,
+                &raw mut error_ptr,
             )
         };
 
@@ -418,7 +422,7 @@ impl LlamaSampler {
                 trigger_word_ptrs.len(),
                 trigger_tokens.as_ptr().cast(),
                 trigger_tokens.len(),
-                &mut error_ptr,
+                &raw mut error_ptr,
             )
         };
 
@@ -457,7 +461,7 @@ impl LlamaSampler {
                 trigger_pattern_ptrs.len(),
                 trigger_tokens.as_ptr().cast(),
                 trigger_tokens.len(),
-                &mut error_ptr,
+                &raw mut error_ptr,
             )
         };
 

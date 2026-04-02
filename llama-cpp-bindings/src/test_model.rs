@@ -39,7 +39,7 @@ fn hf_encoder_model() -> Result<String> {
     required_env("LLAMA_TEST_HF_ENCODER_MODEL")
 }
 
-/// Downloads a file from a specific HuggingFace repo.
+/// Downloads a file from a specific `HuggingFace` repo.
 ///
 /// # Errors
 /// Returns an error if the download fails.

@@ -17,8 +17,8 @@ pub fn json_schema_to_grammar(schema_json: &str) -> Result<String> {
         llama_cpp_bindings_sys::llama_rs_json_schema_to_grammar(
             schema_cstr.as_ptr(),
             false,
-            &mut out,
-            &mut error_ptr,
+            &raw mut out,
+            &raw mut error_ptr,
         )
     };
 
