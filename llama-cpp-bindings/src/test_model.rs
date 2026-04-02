@@ -39,6 +39,14 @@ fn hf_encoder_model() -> Result<String> {
     required_env("LLAMA_TEST_HF_ENCODER_MODEL")
 }
 
+/// Downloads a file from a specific HuggingFace repo.
+///
+/// # Errors
+/// Returns an error if the download fails.
+pub fn download_file_from(repo: &str, filename: &str) -> Result<PathBuf> {
+    download_file(repo, filename)
+}
+
 fn download_file(repo: &str, filename: &str) -> Result<PathBuf> {
     let path = hf_hub::api::sync::ApiBuilder::new()
         .with_progress(true)

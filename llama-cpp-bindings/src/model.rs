@@ -1838,4 +1838,254 @@ mod tests {
 
         assert!(result.is_err());
     }
+
+    #[test]
+    #[serial]
+    fn sample_returns_result_and_succeeds_with_valid_index() {
+        use crate::sampling::LlamaSampler;
+        use crate::token::LlamaToken;
+
+        let (backend, model) = test_model::load_default_model().unwrap();
+        let ctx_params = crate::context::params::LlamaContextParams::default()
+            .with_n_ctx(std::num::NonZeroU32::new(256));
+        let mut context = model.new_context(&backend, ctx_params).unwrap();
+
+        let tokens = model.str_to_token("Hello", AddBos::Always).unwrap();
+        let mut batch = crate::llama_batch::LlamaBatch::new(512, 1).unwrap();
+
+        batch.add_sequence(&tokens, 0, false).unwrap();
+
+        context.decode(&mut batch).unwrap();
+
+        let mut sampler =
+            LlamaSampler::chain_simple([LlamaSampler::temp(0.8), LlamaSampler::greedy()]);
+
+        // sample() now returns Result to catch C++ exceptions at the FFI
+        // boundary instead of aborting the process.
+        let result = sampler.sample(&context, batch.n_tokens() - 1);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn grammar_sampler_constrains_output_to_yes_or_no() {
+        use crate::sampling::LlamaSampler;
+        use std::sync::Arc;
+
+        let backend = Arc::new(LlamaBackend::init().unwrap());
+        let model_params = LlamaModelParams::default();
+        let model_path =
+            test_model::download_file_from("Qwen/Qwen3-8B-GGUF", "Qwen3-8B-Q4_K_M.gguf").unwrap();
+        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+
+        let ctx_params = crate::context::params::LlamaContextParams::default()
+            .with_n_ctx(std::num::NonZeroU32::new(512));
+        let mut context = model.new_context(&backend, ctx_params).unwrap();
+
+        let prompt = "<|im_start|>user\nIs the sky blue? Answer yes or no.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+        let tokens = model.str_to_token(prompt, AddBos::Always).unwrap();
+        let mut batch = crate::llama_batch::LlamaBatch::new(512, 1).unwrap();
+
+        batch.add_sequence(&tokens, 0, false).unwrap();
+
+        context.decode(&mut batch).unwrap();
+
+        let mut sampler = LlamaSampler::chain_simple([
+            LlamaSampler::grammar(&model, r#"root ::= [Yy] [Ee] [Ss] | [Nn] [Oo]"#, "root")
+                .unwrap(),
+            LlamaSampler::temp(0.8),
+            LlamaSampler::greedy(),
+        ]);
+
+        let token = sampler.sample(&context, batch.n_tokens() - 1).unwrap();
+
+        assert!(
+            !model.is_eog_token(token),
+            "Grammar sampler should not allow EOS as first token"
+        );
+
+        let mut decoder = encoding_rs::UTF_8.new_decoder();
+        let piece = model
+            .token_to_piece(token, &mut decoder, true, None)
+            .unwrap();
+        let first_char = piece.chars().next().unwrap().to_lowercase().next().unwrap();
+
+        assert!(
+            first_char == 'y' || first_char == 'n',
+            "Grammar should constrain first token to start with y/n, got: '{piece}'"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn json_schema_grammar_sampler_constrains_output_to_json() {
+        use crate::sampling::LlamaSampler;
+        use std::sync::Arc;
+
+        let backend = Arc::new(LlamaBackend::init().unwrap());
+        let model_params = LlamaModelParams::default();
+        let model_path =
+            test_model::download_file_from("Qwen/Qwen3-8B-GGUF", "Qwen3-8B-Q4_K_M.gguf").unwrap();
+        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+
+        let ctx_params = crate::context::params::LlamaContextParams::default()
+            .with_n_ctx(std::num::NonZeroU32::new(512));
+        let mut context = model.new_context(&backend, ctx_params).unwrap();
+
+        let prompt = "<|im_start|>user\nWhat is 2+2? Respond with a JSON object.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+        let tokens = model.str_to_token(prompt, AddBos::Always).unwrap();
+        let mut batch = crate::llama_batch::LlamaBatch::new(512, 1).unwrap();
+
+        batch.add_sequence(&tokens, 0, false).unwrap();
+
+        context.decode(&mut batch).unwrap();
+
+        let grammar_str = crate::json_schema_to_grammar(
+            r#"{"type": "object", "properties": {"answer": {"type": "string"}}, "required": ["answer"]}"#
+        ).unwrap();
+
+        let mut sampler = LlamaSampler::chain_simple([
+            LlamaSampler::grammar(&model, &grammar_str, "root").unwrap(),
+            LlamaSampler::temp(0.8),
+            LlamaSampler::greedy(),
+        ]);
+
+        let token = sampler.sample(&context, batch.n_tokens() - 1).unwrap();
+
+        assert!(
+            !model.is_eog_token(token),
+            "Grammar sampler should not allow EOS as first token"
+        );
+
+        let mut decoder = encoding_rs::UTF_8.new_decoder();
+        let piece = model
+            .token_to_piece(token, &mut decoder, true, None)
+            .unwrap();
+
+        assert!(
+            piece.starts_with('{'),
+            "JSON schema grammar should constrain first token to start with '{{', got: '{piece}'"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn sample_with_grammar_produces_constrained_output_in_loop() {
+        use crate::sampling::LlamaSampler;
+        use std::sync::Arc;
+
+        let backend = Arc::new(LlamaBackend::init().unwrap());
+        let model_params = LlamaModelParams::default();
+        let model_path =
+            test_model::download_file_from("Qwen/Qwen3-8B-GGUF", "Qwen3-8B-Q4_K_M.gguf").unwrap();
+        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+
+        let ctx_params = crate::context::params::LlamaContextParams::default()
+            .with_n_ctx(std::num::NonZeroU32::new(512));
+        let mut context = model.new_context(&backend, ctx_params).unwrap();
+
+        let prompt = "<|im_start|>user\nIs the sky blue? yes or no<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+        let tokens = model.str_to_token(prompt, AddBos::Always).unwrap();
+        let mut batch = crate::llama_batch::LlamaBatch::new(512, 1).unwrap();
+
+        batch.add_sequence(&tokens, 0, false).unwrap();
+
+        context.decode(&mut batch).unwrap();
+
+        let mut sampler = LlamaSampler::chain_simple([
+            LlamaSampler::grammar(&model, r#"root ::= "yes" | "no""#, "root").unwrap(),
+            LlamaSampler::temp(0.8),
+            LlamaSampler::greedy(),
+        ]);
+
+        let mut generated = String::new();
+        let mut decoder = encoding_rs::UTF_8.new_decoder();
+        let mut position = batch.n_tokens();
+
+        for iteration in 0..10 {
+            let token = sampler.sample(&context, -1).unwrap();
+            let is_eog = model.is_eog_token(token);
+
+            eprintln!("  iteration={iteration} token={} eog={is_eog}", token.0);
+
+            if is_eog {
+                break;
+            }
+
+            let piece = model
+                .token_to_piece(token, &mut decoder, true, None)
+                .unwrap();
+
+            eprintln!("  piece='{piece}'");
+
+            generated.push_str(&piece);
+
+            batch.clear();
+            batch.add(token, position, &[0], true).unwrap();
+            position += 1;
+
+            context.decode(&mut batch).unwrap();
+        }
+
+        let lowercase = generated.to_lowercase();
+
+        assert!(
+            lowercase == "yes" || lowercase == "no",
+            "Grammar loop should produce 'yes' or 'no', got: '{generated}'"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn sample_without_grammar_produces_multiple_tokens() {
+        use crate::sampling::LlamaSampler;
+        use std::sync::Arc;
+
+        let backend = Arc::new(LlamaBackend::init().unwrap());
+        let model_params = LlamaModelParams::default();
+        let model_path =
+            test_model::download_file_from("Qwen/Qwen3-8B-GGUF", "Qwen3-8B-Q4_K_M.gguf").unwrap();
+        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+
+        let ctx_params = crate::context::params::LlamaContextParams::default()
+            .with_n_ctx(std::num::NonZeroU32::new(512));
+        let mut context = model.new_context(&backend, ctx_params).unwrap();
+
+        let prompt =
+            "<|im_start|>user\nSay hello<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+        let tokens = model.str_to_token(prompt, AddBos::Always).unwrap();
+        let mut batch = crate::llama_batch::LlamaBatch::new(512, 1).unwrap();
+
+        batch.add_sequence(&tokens, 0, false).unwrap();
+
+        context.decode(&mut batch).unwrap();
+
+        let mut sampler =
+            LlamaSampler::chain_simple([LlamaSampler::temp(0.8), LlamaSampler::greedy()]);
+
+        let mut token_count = 0;
+        let mut position = batch.n_tokens();
+
+        for _ in 0..5 {
+            let token = sampler.sample(&context, -1).unwrap();
+
+            if model.is_eog_token(token) {
+                break;
+            }
+
+            token_count += 1;
+
+            batch.clear();
+            batch.add(token, position, &[0], true).unwrap();
+            position += 1;
+
+            context.decode(&mut batch).unwrap();
+        }
+
+        assert!(
+            token_count > 0,
+            "Should produce at least one token without grammar"
+        );
+    }
 }

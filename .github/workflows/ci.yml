@@ -1,4 +1,4 @@
-name: CI
+name: ci
 
 on:
   push:
@@ -9,7 +9,7 @@ env:
 
 jobs:
   fmt:
-    name: Formatting
+    name: formatting
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,14 +24,14 @@ jobs:
       - run: make fmt
 
   test:
-    name: Tests
+    name: tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install system dependencies
+      - name: install system dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake libclang-dev
 
       - uses: dtolnay/rust-toolchain@stable

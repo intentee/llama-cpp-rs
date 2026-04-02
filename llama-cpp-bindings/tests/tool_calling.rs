@@ -100,7 +100,7 @@ fn tool_calling_generates_grammar_and_prompt() -> Result<()> {
     let additional_stops = result.additional_stops.clone();
 
     while n_cur <= max_tokens {
-        let token = sampler.sample(&ctx, batch.n_tokens() - 1);
+        let token = sampler.sample(&ctx, batch.n_tokens() - 1)?;
 
         if model.is_eog_token(token) {
             break;

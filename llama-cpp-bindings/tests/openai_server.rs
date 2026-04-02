@@ -78,7 +78,7 @@ fn run_chat_completion(
     let mut sampler = LlamaSampler::greedy();
 
     while n_cur < max_tokens_total {
-        let token = sampler.sample(&ctx, batch.n_tokens() - 1);
+        let token = sampler.sample(&ctx, batch.n_tokens() - 1)?;
 
         if model.is_eog_token(token) {
             break;

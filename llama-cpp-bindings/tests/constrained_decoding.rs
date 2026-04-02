@@ -52,7 +52,7 @@ fn json_schema_constrains_output() -> Result<()> {
     let mut generated = String::new();
 
     while n_cur <= 128 {
-        let token = sampler.sample(&ctx, batch.n_tokens() - 1);
+        let token = sampler.sample(&ctx, batch.n_tokens() - 1)?;
 
         if model.is_eog_token(token) {
             break;

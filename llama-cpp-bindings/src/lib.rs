@@ -12,25 +12,26 @@
 
 pub mod context;
 pub mod error;
+pub mod ffi_error_reader;
+pub mod ffi_status_is_ok;
+pub mod ffi_status_to_i32;
+pub mod ggml_time_us;
 pub mod gguf_context;
 pub mod gguf_context_error;
 pub mod gguf_type;
+pub mod json_schema_to_grammar;
 pub mod llama_backend;
 pub mod llama_backend_device;
 pub mod llama_backend_numa_strategy;
 pub mod llama_batch;
-pub mod llama_utility_ggml_time_us;
-pub mod llama_utility_json_schema_to_grammar;
-pub mod llama_utility_llama_time_us;
-pub mod llama_utility_max_devices;
-pub mod llama_utility_mlock_supported;
-pub mod llama_utility_mmap_supported;
-pub mod llama_utility_status_is_ok;
-pub mod llama_utility_status_to_i32;
+pub mod llama_time_us;
 #[cfg(feature = "llguidance")]
 pub mod llguidance_sampler;
 pub mod log;
 pub mod log_options;
+pub mod max_devices;
+pub mod mlock_supported;
+pub mod mmap_supported;
 pub mod model;
 #[cfg(feature = "mtmd")]
 pub mod mtmd;
@@ -44,22 +45,22 @@ pub use error::{
     ApplyChatTemplateError, ChatParseError, ChatTemplateError, DecodeError, EmbeddingsError,
     EncodeError, GrammarError, LlamaContextLoadError, LlamaCppError, LlamaLoraAdapterInitError,
     LlamaLoraAdapterRemoveError, LlamaLoraAdapterSetError, LlamaModelLoadError, LogitsError,
-    MetaValError, ModelParamsError, NewLlamaChatMessageError, Result, SamplerAcceptError,
-    SamplingError, StringToTokenError, TokenSamplingError, TokenToStringError,
+    MetaValError, ModelParamsError, NewLlamaChatMessageError, Result, SampleError,
+    SamplerAcceptError, SamplingError, StringToTokenError, TokenSamplingError, TokenToStringError,
 };
 
 pub use llama_backend_device::{
     LlamaBackendDevice, LlamaBackendDeviceType, list_llama_ggml_backend_devices,
 };
 
-pub use llama_utility_ggml_time_us::ggml_time_us;
-pub use llama_utility_json_schema_to_grammar::json_schema_to_grammar;
-pub use llama_utility_llama_time_us::llama_time_us;
-pub use llama_utility_max_devices::max_devices;
-pub use llama_utility_mlock_supported::mlock_supported;
-pub use llama_utility_mmap_supported::mmap_supported;
-pub use llama_utility_status_is_ok::status_is_ok;
-pub use llama_utility_status_to_i32::status_to_i32;
+pub use ffi_status_is_ok::status_is_ok;
+pub use ffi_status_to_i32::status_to_i32;
+pub use ggml_time_us::ggml_time_us;
+pub use json_schema_to_grammar::json_schema_to_grammar;
+pub use llama_time_us::llama_time_us;
+pub use max_devices::max_devices;
+pub use mlock_supported::mlock_supported;
+pub use mmap_supported::mmap_supported;
 
 pub use log::send_logs_to_tracing;
 pub use log_options::LogOptions;

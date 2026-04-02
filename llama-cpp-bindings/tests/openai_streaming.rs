@@ -100,7 +100,7 @@ fn streaming_deltas_produce_valid_chunks() -> Result<()> {
     let mut total_chunks = 0usize;
 
     while n_cur <= max_tokens {
-        let token = sampler.sample(&ctx, batch.n_tokens() - 1);
+        let token = sampler.sample(&ctx, batch.n_tokens() - 1)?;
 
         if model.is_eog_token(token) {
             break;
