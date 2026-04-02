@@ -10,18 +10,20 @@ use crate::model::LlamaModel;
 use crate::token::LlamaToken;
 use crate::token::data_array::LlamaTokenDataArray;
 use crate::token::logit_bias::LlamaLogitBias;
-use crate::{GrammarError, SampleError, SamplerAcceptError, SamplingError, status_is_ok};
+use crate::{GrammarError, SampleError, SamplerAcceptError, SamplingError};
 
 fn check_sampler_accept_status(
     status: llama_cpp_bindings_sys::llama_rs_status,
     error_ptr: *mut c_char,
 ) -> Result<(), SamplerAcceptError> {
-    if status_is_ok(status) {
-        Ok(())
-    } else {
-        Err(SamplerAcceptError::CppException(unsafe {
+    match status {
+        llama_cpp_bindings_sys::LLAMA_RS_STATUS_OK => Ok(()),
+        llama_cpp_bindings_sys::LLAMA_RS_STATUS_INVALID_ARGUMENT => {
+            Err(SamplerAcceptError::InvalidArgument)
+        }
+        _ => Err(SamplerAcceptError::CppException(unsafe {
             read_and_free_cpp_error(error_ptr)
-        }))
+        })),
     }
 }
 
@@ -539,7 +541,12 @@ impl LlamaSampler {
         let mut seq_breaker_pointers: Vec<*const c_char> =
             seq_breakers.iter().map(|s| s.as_ptr()).collect();
 
-        let n_ctx_train = checked_u32_as_i32(model.n_ctx_train())?;
+        let n_ctx_train_value = model.n_ctx_train().map_err(|convert_error| {
+            GrammarError::IntegerOverflow(format!(
+                "n_ctx_train does not fit into u32: {convert_error}"
+            ))
+        })?;
+        let n_ctx_train = checked_u32_as_i32(n_ctx_train_value)?;
         let sampler = unsafe {
             llama_cpp_bindings_sys::llama_sampler_init_dry(
                 model.vocab_ptr(),
@@ -996,13 +1003,39 @@ mod tests {
     }
 
     #[test]
-    fn check_sampler_accept_status_error() {
+    fn check_sampler_accept_status_ok() {
+        let result = super::check_sampler_accept_status(
+            llama_cpp_bindings_sys::LLAMA_RS_STATUS_OK,
+            std::ptr::null_mut(),
+        );
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn check_sampler_accept_status_invalid_argument() {
+        let result = super::check_sampler_accept_status(
+            llama_cpp_bindings_sys::LLAMA_RS_STATUS_INVALID_ARGUMENT,
+            std::ptr::null_mut(),
+        );
+
+        assert!(matches!(
+            result,
+            Err(crate::SamplerAcceptError::InvalidArgument)
+        ));
+    }
+
+    #[test]
+    fn check_sampler_accept_status_exception() {
         let result = super::check_sampler_accept_status(
             llama_cpp_bindings_sys::LLAMA_RS_STATUS_EXCEPTION,
             std::ptr::null_mut(),
         );
 
-        assert!(result.is_err());
+        assert!(matches!(
+            result,
+            Err(crate::SamplerAcceptError::CppException(_))
+        ));
     }
 
     #[test]

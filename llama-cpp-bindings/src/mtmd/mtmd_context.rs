@@ -132,7 +132,7 @@ impl MtmdContext {
         text: MtmdInputText,
         bitmaps: &[&MtmdBitmap],
     ) -> Result<MtmdInputChunks, MtmdTokenizeError> {
-        let chunks = MtmdInputChunks::new();
+        let chunks = MtmdInputChunks::new()?;
         let text_cstring = CString::new(text.text)?;
         let input_text = llama_cpp_bindings_sys::mtmd_input_text {
             text: text_cstring.as_ptr(),

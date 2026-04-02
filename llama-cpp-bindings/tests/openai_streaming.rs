@@ -63,7 +63,7 @@ fn streaming_deltas_produce_valid_chunks() -> Result<()> {
     let tokens = model.str_to_token(&result.prompt, AddBos::Always)?;
     let n_predict: i32 = 128;
     let n_ctx = model
-        .n_ctx_train()
+        .n_ctx_train()?
         .max(tokens.len() as u32 + n_predict as u32);
     let ctx_params = LlamaContextParams::default()
         .with_n_ctx(NonZeroU32::new(n_ctx))

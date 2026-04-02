@@ -1,5 +1,6 @@
 #include "wrapper_common.h"
 
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
@@ -8,7 +9,6 @@
 
 #include "llama.cpp/common/json-schema-to-grammar.h"
 #include "llama.cpp/include/llama.h"
-#include "llama.cpp/src/llama-impl.h"
 #include "wrapper_utils.h"
 
 #include <nlohmann/json.hpp>
@@ -32,12 +32,12 @@ extern "C" llama_rs_status llama_rs_json_schema_to_grammar(
 
         return *out_grammar ? LLAMA_RS_STATUS_OK : LLAMA_RS_STATUS_ALLOCATION_FAILED;
     } catch (const std::exception & err) {
-        LLAMA_LOG_ERROR("%s: C++ exception: %s\n", __func__, err.what());
+        fprintf(stderr, "%s: C++ exception: %s\n", __func__, err.what());
         *out_error = llama_rs_dup_string(err.what());
 
         return LLAMA_RS_STATUS_EXCEPTION;
     } catch (...) {
-        LLAMA_LOG_ERROR("%s: unknown C++ exception\n", __func__);
+        fprintf(stderr, "%s: unknown C++ exception\n", __func__);
         *out_error = llama_rs_dup_string("unknown C++ exception");
 
         return LLAMA_RS_STATUS_EXCEPTION;
@@ -109,12 +109,12 @@ extern "C" struct llama_sampler * llama_rs_sampler_init_grammar(
     try {
         return llama_sampler_init_grammar(vocab, grammar_str, grammar_root);
     } catch (const std::exception & err) {
-        LLAMA_LOG_ERROR("%s: C++ exception: %s\n", __func__, err.what());
+        fprintf(stderr, "%s: C++ exception: %s\n", __func__, err.what());
         *out_error = llama_rs_dup_string(err.what());
 
         return nullptr;
     } catch (...) {
-        LLAMA_LOG_ERROR("%s: unknown C++ exception\n", __func__);
+        fprintf(stderr, "%s: unknown C++ exception\n", __func__);
         *out_error = llama_rs_dup_string("unknown C++ exception");
 
         return nullptr;
@@ -160,12 +160,12 @@ extern "C" struct llama_sampler * llama_rs_sampler_init_grammar_lazy(
             trigger_tokens,
             num_trigger_tokens);
     } catch (const std::exception & err) {
-        LLAMA_LOG_ERROR("%s: C++ exception: %s\n", __func__, err.what());
+        fprintf(stderr, "%s: C++ exception: %s\n", __func__, err.what());
         *out_error = llama_rs_dup_string(err.what());
 
         return nullptr;
     } catch (...) {
-        LLAMA_LOG_ERROR("%s: unknown C++ exception\n", __func__);
+        fprintf(stderr, "%s: unknown C++ exception\n", __func__);
         *out_error = llama_rs_dup_string("unknown C++ exception");
 
         return nullptr;
@@ -197,12 +197,12 @@ extern "C" struct llama_sampler * llama_rs_sampler_init_grammar_lazy_patterns(
             trigger_tokens,
             num_trigger_tokens);
     } catch (const std::exception & err) {
-        LLAMA_LOG_ERROR("%s: C++ exception: %s\n", __func__, err.what());
+        fprintf(stderr, "%s: C++ exception: %s\n", __func__, err.what());
         *out_error = llama_rs_dup_string(err.what());
 
         return nullptr;
     } catch (...) {
-        LLAMA_LOG_ERROR("%s: unknown C++ exception\n", __func__);
+        fprintf(stderr, "%s: unknown C++ exception\n", __func__);
         *out_error = llama_rs_dup_string("unknown C++ exception");
 
         return nullptr;
@@ -308,12 +308,12 @@ extern "C" llama_rs_status llama_rs_sampler_sample(
 
         return LLAMA_RS_STATUS_OK;
     } catch (const std::exception & err) {
-        LLAMA_LOG_ERROR("%s: C++ exception: %s\n", __func__, err.what());
+        fprintf(stderr, "%s: C++ exception: %s\n", __func__, err.what());
         *out_error = llama_rs_dup_string(err.what());
 
         return LLAMA_RS_STATUS_EXCEPTION;
     } catch (...) {
-        LLAMA_LOG_ERROR("%s: unknown C++ exception\n", __func__);
+        fprintf(stderr, "%s: unknown C++ exception\n", __func__);
         *out_error = llama_rs_dup_string("unknown C++ exception");
 
         return LLAMA_RS_STATUS_EXCEPTION;
@@ -335,12 +335,12 @@ extern "C" llama_rs_status llama_rs_sampler_accept(
 
         return LLAMA_RS_STATUS_OK;
     } catch (const std::exception & err) {
-        LLAMA_LOG_ERROR("%s: C++ exception: %s\n", __func__, err.what());
+        fprintf(stderr, "%s: C++ exception: %s\n", __func__, err.what());
         *out_error = llama_rs_dup_string(err.what());
 
         return LLAMA_RS_STATUS_EXCEPTION;
     } catch (...) {
-        LLAMA_LOG_ERROR("%s: unknown C++ exception\n", __func__);
+        fprintf(stderr, "%s: unknown C++ exception\n", __func__);
         *out_error = llama_rs_dup_string("unknown C++ exception");
 
         return LLAMA_RS_STATUS_EXCEPTION;

@@ -77,16 +77,15 @@ impl LlamaModel {
         unsafe { llama_cpp_bindings_sys::llama_model_get_vocab(self.model.as_ptr()) }
     }
 
-    /// get the number of tokens the model was trained on
+    /// Get the number of tokens the model was trained on.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// If the number of tokens the model was trained on does not fit into an `u32`. This should be impossible on most
-    /// platforms due to llama.cpp returning a `c_int` (i32 on most platforms) which is almost certainly positive.
-    #[must_use]
-    pub fn n_ctx_train(&self) -> u32 {
+    /// Returns an error if the value returned by llama.cpp does not fit into a `u32`.
+    pub fn n_ctx_train(&self) -> Result<u32, std::num::TryFromIntError> {
         let n_ctx_train = unsafe { llama_cpp_bindings_sys::llama_n_ctx_train(self.model.as_ptr()) };
-        u32::try_from(n_ctx_train).expect("n_ctx_train fits into an u32")
+
+        u32::try_from(n_ctx_train)
     }
 
     /// Get all tokens in the model.
@@ -151,11 +150,8 @@ impl LlamaModel {
     ///
     /// # Errors
     ///
-    /// - if [`str`] contains a null byte.
-    ///
-    /// # Panics
-    ///
-    /// - if there is more than [`usize::MAX`] [`LlamaToken`]s in [`str`].
+    /// - if [`str`] contains a null byte
+    /// - if an integer conversion fails during tokenization
     ///
     ///
     /// ```no_run
@@ -200,7 +196,7 @@ impl LlamaModel {
         };
 
         let size = if size.is_negative() {
-            buffer.reserve_exact(usize::try_from(-size).expect("negated size fits into usize"));
+            buffer.reserve_exact(usize::try_from(-size)?);
             unsafe {
                 llama_cpp_bindings_sys::llama_tokenize(
                     self.vocab_ptr(),
@@ -228,14 +224,17 @@ impl LlamaModel {
 
     /// Get the type of a token.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// If the token type is not known to this library.
-    #[must_use]
-    pub fn token_attr(&self, LlamaToken(id): LlamaToken) -> LlamaTokenAttrs {
+    /// Returns an error if the token type is not known to this library.
+    pub fn token_attr(
+        &self,
+        LlamaToken(id): LlamaToken,
+    ) -> Result<LlamaTokenAttrs, crate::token_type::LlamaTokenTypeFromIntError> {
         let token_type =
             unsafe { llama_cpp_bindings_sys::llama_token_get_attr(self.vocab_ptr(), id) };
-        LlamaTokenAttrs::try_from(token_type).expect("token type is valid")
+
+        LlamaTokenAttrs::try_from(token_type)
     }
 
     /// Convert a token to a string using the underlying llama.cpp `llama_token_to_piece` function.
@@ -252,9 +251,7 @@ impl LlamaModel {
     ///
     /// - if the token type is unknown
     ///
-    /// # Panics
-    ///
-    /// - if the returned size from llama-cpp does not fit into a [`usize`]. (this should never happen)
+    /// - if the returned size from llama.cpp does not fit into a `usize`
     pub fn token_to_piece(
         &self,
         token: LlamaToken,
@@ -263,15 +260,11 @@ impl LlamaModel {
         lstrip: Option<NonZeroU16>,
     ) -> Result<String, TokenToStringError> {
         let bytes = match self.token_to_piece_bytes(token, 8, special, lstrip) {
-            Err(TokenToStringError::InsufficientBufferSpace(required_size)) => self
-                .token_to_piece_bytes(
-                    token,
-                    (-required_size)
-                        .try_into()
-                        .expect("Error buffer size is positive"),
-                    special,
-                    lstrip,
-                ),
+            Err(TokenToStringError::InsufficientBufferSpace(required_size)) => {
+                let buffer_size: usize = (-required_size).try_into()?;
+
+                self.token_to_piece_bytes(token, buffer_size, special, lstrip)
+            }
             other => other,
         }?;
 
@@ -292,6 +285,7 @@ impl LlamaModel {
     ///
     /// - if the token type is unknown
     /// - the resultant token is larger than `buffer_size`.
+    /// - if an integer conversion fails
     #[allow(clippy::missing_panics_doc)]
     pub fn token_to_piece_bytes(
         &self,
@@ -325,7 +319,7 @@ impl LlamaModel {
             size => {
                 let string = unsafe { CString::from_raw(buf) };
                 let mut bytes = string.into_bytes();
-                let len = usize::try_from(size).expect("size is positive and fits into usize");
+                let len = usize::try_from(size)?;
                 bytes.truncate(len);
 
                 Ok(bytes)
@@ -344,13 +338,13 @@ impl LlamaModel {
 
     /// The type of vocab the model was trained on.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// If llama-cpp emits a vocab type that is not known to this library.
-    #[must_use]
-    pub fn vocab_type(&self) -> VocabType {
+    /// Returns an error if llama.cpp emits a vocab type that is not known to this library.
+    pub fn vocab_type(&self) -> Result<VocabType, LlamaTokenTypeFromIntError> {
         let vocab_type = unsafe { llama_cpp_bindings_sys::llama_vocab_type(self.vocab_ptr()) };
-        VocabType::try_from(vocab_type).expect("invalid vocab type")
+
+        VocabType::try_from(vocab_type)
     }
 
     /// This returns a `c_int` for maximum compatibility. Most of the time it can be cast to an i32
@@ -380,35 +374,29 @@ impl LlamaModel {
 
     /// Returns the number of layers within the model.
     ///
-    /// # Panics
-    /// Panics if the layer count returned by llama.cpp is negative.
-    #[must_use]
-    pub fn n_layer(&self) -> u32 {
-        // llama.cpp API returns int32_t but the underlying field is uint32_t, so this is safe
+    /// # Errors
+    ///
+    /// Returns an error if the layer count returned by llama.cpp does not fit into a `u32`.
+    pub fn n_layer(&self) -> Result<u32, std::num::TryFromIntError> {
         u32::try_from(unsafe { llama_cpp_bindings_sys::llama_model_n_layer(self.model.as_ptr()) })
-            .expect("llama.cpp returns a positive value for n_layer")
     }
 
     /// Returns the number of attention heads within the model.
     ///
-    /// # Panics
-    /// Panics if the head count returned by llama.cpp is negative.
-    #[must_use]
-    pub fn n_head(&self) -> u32 {
-        // llama.cpp API returns int32_t but the underlying field is uint32_t, so this is safe
+    /// # Errors
+    ///
+    /// Returns an error if the head count returned by llama.cpp does not fit into a `u32`.
+    pub fn n_head(&self) -> Result<u32, std::num::TryFromIntError> {
         u32::try_from(unsafe { llama_cpp_bindings_sys::llama_model_n_head(self.model.as_ptr()) })
-            .expect("llama.cpp returns a positive value for n_head")
     }
 
     /// Returns the number of KV attention heads.
     ///
-    /// # Panics
-    /// Panics if the KV head count returned by llama.cpp is negative.
-    #[must_use]
-    pub fn n_head_kv(&self) -> u32 {
-        // llama.cpp API returns int32_t but the underlying field is uint32_t, so this is safe
+    /// # Errors
+    ///
+    /// Returns an error if the KV head count returned by llama.cpp does not fit into a `u32`.
+    pub fn n_head_kv(&self) -> Result<u32, std::num::TryFromIntError> {
         u32::try_from(unsafe { llama_cpp_bindings_sys::llama_model_n_head_kv(self.model.as_ptr()) })
-            .expect("llama.cpp returns a positive value for n_head_kv")
     }
 
     /// Returns whether the model is a hybrid network (Jamba, Granite, Qwen3xx, etc.)
@@ -969,7 +957,7 @@ mod tests {
         assert!(model.n_vocab() > 0);
         assert!(model.n_embd() > 0);
         assert!(model.n_params() > 0);
-        assert!(model.n_ctx_train() > 0);
+        assert!(model.n_ctx_train().unwrap() > 0);
     }
 
     #[test]
@@ -1086,7 +1074,7 @@ mod tests {
     fn n_layer_returns_positive() {
         let (_backend, model) = test_model::load_default_model().unwrap();
 
-        assert!(model.n_layer() > 0);
+        assert!(model.n_layer().unwrap() > 0);
     }
 
     #[test]
@@ -1094,7 +1082,7 @@ mod tests {
     fn n_head_returns_positive() {
         let (_backend, model) = test_model::load_default_model().unwrap();
 
-        assert!(model.n_head() > 0);
+        assert!(model.n_head().unwrap() > 0);
     }
 
     #[test]
@@ -1102,7 +1090,7 @@ mod tests {
     fn n_head_kv_returns_positive() {
         let (_backend, model) = test_model::load_default_model().unwrap();
 
-        assert!(model.n_head_kv() > 0);
+        assert!(model.n_head_kv().unwrap() > 0);
     }
 
     #[test]
@@ -1342,14 +1330,14 @@ mod tests {
     fn token_attr_returns_valid_attr() {
         let (_backend, model) = test_model::load_default_model().unwrap();
         let bos = model.token_bos();
-        let _attr = model.token_attr(bos);
+        let _attr = model.token_attr(bos).unwrap();
     }
 
     #[test]
     #[serial]
     fn vocab_type_returns_valid_type() {
         let (_backend, model) = test_model::load_default_model().unwrap();
-        let _vocab_type = model.vocab_type();
+        let _vocab_type = model.vocab_type().unwrap();
     }
 
     #[test]
@@ -1873,11 +1861,7 @@ mod tests {
         use crate::sampling::LlamaSampler;
         use std::sync::Arc;
 
-        let backend = Arc::new(LlamaBackend::init().unwrap());
-        let model_params = LlamaModelParams::default();
-        let model_path =
-            test_model::download_file_from("Qwen/Qwen3-8B-GGUF", "Qwen3-8B-Q4_K_M.gguf").unwrap();
-        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_model().unwrap();
 
         let ctx_params = crate::context::params::LlamaContextParams::default()
             .with_n_ctx(std::num::NonZeroU32::new(512));
@@ -1923,11 +1907,7 @@ mod tests {
         use crate::sampling::LlamaSampler;
         use std::sync::Arc;
 
-        let backend = Arc::new(LlamaBackend::init().unwrap());
-        let model_params = LlamaModelParams::default();
-        let model_path =
-            test_model::download_file_from("Qwen/Qwen3-8B-GGUF", "Qwen3-8B-Q4_K_M.gguf").unwrap();
-        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_model().unwrap();
 
         let ctx_params = crate::context::params::LlamaContextParams::default()
             .with_n_ctx(std::num::NonZeroU32::new(512));
@@ -1975,11 +1955,7 @@ mod tests {
         use crate::sampling::LlamaSampler;
         use std::sync::Arc;
 
-        let backend = Arc::new(LlamaBackend::init().unwrap());
-        let model_params = LlamaModelParams::default();
-        let model_path =
-            test_model::download_file_from("Qwen/Qwen3-8B-GGUF", "Qwen3-8B-Q4_K_M.gguf").unwrap();
-        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_model().unwrap();
 
         let ctx_params = crate::context::params::LlamaContextParams::default()
             .with_n_ctx(std::num::NonZeroU32::new(512));
@@ -2042,11 +2018,7 @@ mod tests {
         use crate::sampling::LlamaSampler;
         use std::sync::Arc;
 
-        let backend = Arc::new(LlamaBackend::init().unwrap());
-        let model_params = LlamaModelParams::default();
-        let model_path =
-            test_model::download_file_from("Qwen/Qwen3-8B-GGUF", "Qwen3-8B-Q4_K_M.gguf").unwrap();
-        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).unwrap();
+        let (backend, model) = test_model::load_default_model().unwrap();
 
         let ctx_params = crate::context::params::LlamaContextParams::default()
             .with_n_ctx(std::num::NonZeroU32::new(512));
