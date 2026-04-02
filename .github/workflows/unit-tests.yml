@@ -1,7 +1,8 @@
-name: CI
+name: unit-tests
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 env:
@@ -9,7 +10,7 @@ env:
 
 jobs:
   fmt:
-    name: Formatting
+    name: formatting
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,26 +18,23 @@ jobs:
           submodules: recursive
 
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: "1.92.0"
-          components: rustfmt
+
+      - uses: Swatinem/rust-cache@v2
 
       - run: make fmt
 
   test:
-    name: Tests
+    name: tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install system dependencies
+      - name: install system dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake libclang-dev
 
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: "1.92.0"
 
       - uses: Swatinem/rust-cache@v2
 

@@ -64,8 +64,7 @@ fn raw_prompt_completion_with_timing() -> Result<()> {
     let mut generated = String::new();
 
     while n_cur <= n_len {
-        let token = sampler.sample(&ctx, batch.n_tokens() - 1);
-        sampler.accept(token)?;
+        let token = sampler.sample(&ctx, batch.n_tokens() - 1)?;
 
         if model.is_eog_token(token) {
             break;
@@ -137,8 +136,7 @@ fn chat_inference_produces_coherent_output() -> Result<()> {
     let mut generated = String::new();
 
     while position <= max_tokens {
-        let token = sampler.sample(&context, batch.n_tokens() - 1);
-        sampler.accept(token)?;
+        let token = sampler.sample(&context, batch.n_tokens() - 1)?;
 
         if model.is_eog_token(token) {
             break;

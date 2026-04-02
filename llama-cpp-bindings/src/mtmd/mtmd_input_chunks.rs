@@ -4,6 +4,7 @@ use crate::context::LlamaContext;
 
 use super::mtmd_context::MtmdContext;
 use super::mtmd_error::MtmdEvalError;
+use super::mtmd_error::MtmdInputChunksError;
 use super::mtmd_input_chunk::MtmdInputChunk;
 
 const fn check_eval_result(result: i32) -> Result<(), MtmdEvalError> {
@@ -25,32 +26,28 @@ pub struct MtmdInputChunks {
     pub chunks: NonNull<llama_cpp_bindings_sys::mtmd_input_chunks>,
 }
 
-impl Default for MtmdInputChunks {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl MtmdInputChunks {
-    /// Create a new empty input chunks collection
-    /// # Panics
-    /// This function will panic if the underlying llama.cpp function returns null,
-    /// which should not happen.
+    /// Create a new empty input chunks collection.
+    ///
+    /// # Errors
+    ///
+    /// Returns `MtmdInputChunksError::NullResult` if the underlying llama.cpp function
+    /// returns null.
     ///
     /// # Examples
     ///
     /// ```
     /// use llama_cpp_bindings::mtmd::MtmdInputChunks;
     ///
-    /// let chunks = MtmdInputChunks::new();
+    /// let chunks = MtmdInputChunks::new().unwrap();
     /// assert_eq!(chunks.len(), 0);
     /// assert!(chunks.is_empty());
     /// ```
-    #[must_use]
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self, MtmdInputChunksError> {
         let chunks = unsafe { llama_cpp_bindings_sys::mtmd_input_chunks_init() };
-        let chunks = NonNull::new(chunks).expect("llama.cpp mtmd_input_chunks_init returned null");
-        Self { chunks }
+        let chunks = NonNull::new(chunks).ok_or(MtmdInputChunksError::NullResult)?;
+
+        Ok(Self { chunks })
     }
 
     /// Get the number of chunks
@@ -148,8 +145,8 @@ mod tests {
     use super::MtmdInputChunks;
 
     #[test]
-    fn default_creates_empty_chunks() {
-        let chunks = MtmdInputChunks::default();
+    fn new_creates_empty_chunks() {
+        let chunks = MtmdInputChunks::new().unwrap();
 
         assert!(chunks.is_empty());
         assert_eq!(chunks.len(), 0);
@@ -157,7 +154,7 @@ mod tests {
 
     #[test]
     fn get_out_of_bounds_returns_none() {
-        let chunks = MtmdInputChunks::new();
+        let chunks = MtmdInputChunks::new().unwrap();
 
         assert!(chunks.get(0).is_none());
         assert!(chunks.get(999).is_none());

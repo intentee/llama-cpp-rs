@@ -44,7 +44,7 @@ fn run_chat_completion(
 
     let tokens = model.str_to_token(&result.prompt, AddBos::Always)?;
     let tokens_len_u32 = u32::try_from(tokens.len())?;
-    let n_ctx = model.n_ctx_train().max(tokens_len_u32 + max_tokens);
+    let n_ctx = model.n_ctx_train()?.max(tokens_len_u32 + max_tokens);
     let ctx_params = LlamaContextParams::default()
         .with_n_ctx(NonZeroU32::new(n_ctx))
         .with_n_batch(n_ctx);
@@ -78,7 +78,7 @@ fn run_chat_completion(
     let mut sampler = LlamaSampler::greedy();
 
     while n_cur < max_tokens_total {
-        let token = sampler.sample(&ctx, batch.n_tokens() - 1);
+        let token = sampler.sample(&ctx, batch.n_tokens() - 1)?;
 
         if model.is_eog_token(token) {
             break;

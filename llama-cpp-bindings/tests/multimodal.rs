@@ -91,7 +91,7 @@ fn multimodal_vision_inference_produces_output() -> Result<()> {
     let mut current_position = n_past;
 
     for _ in 0..max_tokens {
-        let token = sampler.sample(&ctx, -1);
+        let token = sampler.sample(&ctx, -1)?;
 
         if model.is_eog_token(token) {
             break;

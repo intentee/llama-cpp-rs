@@ -51,6 +51,9 @@ pub enum MtmdTokenizeError {
     /// Image preprocessing error occurred
     #[error("Image preprocessing error")]
     ImagePreprocessingError,
+    /// Failed to create input chunks collection
+    #[error("{0}")]
+    InputChunksError(#[from] MtmdInputChunksError),
     /// Text contains characters that cannot be converted to C string
     #[error("Failed to create CString from text: {0}")]
     CStringError(#[from] std::ffi::NulError),

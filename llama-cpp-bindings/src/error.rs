@@ -175,8 +175,8 @@ pub enum GrammarError {
     #[error("String contains null bytes: {0}")]
     NulError(#[from] NulError),
     /// The grammar call returned null
-    #[error("Grammar call returned null")]
-    NullGrammar,
+    #[error("Grammar initialization failed: {0}")]
+    NullGrammar(String),
     /// An integer value exceeded the allowed range
     #[error("Integer overflow: {0}")]
     IntegerOverflow(String),
@@ -191,6 +191,18 @@ pub enum SamplingError {
     /// An integer value exceeded the allowed range
     #[error("Integer overflow: {0}")]
     IntegerOverflow(String),
+}
+
+/// Errors that can occur when sampling a token.
+#[derive(Debug, Eq, PartialEq, thiserror::Error)]
+pub enum SampleError {
+    /// A C++ exception was thrown during sampling
+    #[error("C++ exception during sampling: {0}")]
+    CppException(String),
+
+    /// An invalid argument was passed to the sampler
+    #[error("Invalid argument passed to sampler")]
+    InvalidArgument,
 }
 
 /// Decode a error from llama.cpp into a [`DecodeError`].
@@ -345,9 +357,13 @@ pub enum ChatParseError {
 /// Failed to accept a token in a sampler.
 #[derive(Debug, thiserror::Error)]
 pub enum SamplerAcceptError {
-    /// llama.cpp returned an error code.
-    #[error("ffi error {0}")]
-    FfiError(i32),
+    /// A C++ exception was thrown during accept
+    #[error("C++ exception during sampler accept: {0}")]
+    CppException(String),
+
+    /// An invalid argument was passed (null sampler or null error pointer)
+    #[error("Invalid argument passed to sampler accept")]
+    InvalidArgument,
 }
 
 /// Errors that can occur when modifying model parameters.

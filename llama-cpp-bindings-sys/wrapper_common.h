@@ -39,12 +39,14 @@ extern "C" {
 llama_rs_status llama_rs_json_schema_to_grammar(
     const char * schema_json,
     bool force_gbnf,
-    char ** out_grammar);
+    char ** out_grammar,
+    char ** out_error);
 
 struct llama_sampler * llama_rs_sampler_init_grammar(
     const struct llama_vocab * vocab,
     const char * grammar_str,
-    const char * grammar_root);
+    const char * grammar_root,
+    char ** out_error);
 
 struct llama_sampler * llama_rs_sampler_init_grammar_lazy(
     const struct llama_vocab * vocab,
@@ -53,7 +55,8 @@ struct llama_sampler * llama_rs_sampler_init_grammar_lazy(
     const char ** trigger_words,
     size_t num_trigger_words,
     const llama_token * trigger_tokens,
-    size_t num_trigger_tokens);
+    size_t num_trigger_tokens,
+    char ** out_error);
 
 struct llama_sampler * llama_rs_sampler_init_grammar_lazy_patterns(
     const struct llama_vocab * vocab,
@@ -62,9 +65,20 @@ struct llama_sampler * llama_rs_sampler_init_grammar_lazy_patterns(
     const char ** trigger_patterns,
     size_t num_trigger_patterns,
     const llama_token * trigger_tokens,
-    size_t num_trigger_tokens);
+    size_t num_trigger_tokens,
+    char ** out_error);
 
-llama_rs_status llama_rs_sampler_accept(struct llama_sampler * sampler, llama_token token);
+llama_rs_status llama_rs_sampler_accept(
+    struct llama_sampler * sampler,
+    llama_token token,
+    char ** out_error);
+
+llama_rs_status llama_rs_sampler_sample(
+    struct llama_sampler * sampler,
+    struct llama_context * ctx,
+    int32_t idx,
+    llama_token * out_token,
+    char ** out_error);
 
 void llama_rs_chat_template_result_free(struct llama_rs_chat_template_result * result);
 void llama_rs_string_free(char * ptr);

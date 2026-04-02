@@ -1,8 +1,7 @@
-use std::ffi::{CStr, CString};
+use std::ffi::{CStr, CString, c_char};
 
 use crate::error::{LlamaCppError, Result};
-use crate::llama_utility_status_is_ok::status_is_ok;
-use crate::llama_utility_status_to_i32::status_to_i32;
+use crate::ffi_status_is_ok::status_is_ok;
 
 /// Convert a JSON schema string into a llama.cpp grammar string.
 ///
@@ -11,32 +10,40 @@ use crate::llama_utility_status_to_i32::status_to_i32;
 pub fn json_schema_to_grammar(schema_json: &str) -> Result<String> {
     let schema_cstr = CString::new(schema_json)
         .map_err(|err| LlamaCppError::JsonSchemaToGrammarError(err.to_string()))?;
-    let mut out = std::ptr::null_mut();
-    let rc = unsafe {
+    let mut out: *mut c_char = std::ptr::null_mut();
+    let mut error_ptr: *mut c_char = std::ptr::null_mut();
+
+    let status = unsafe {
         llama_cpp_bindings_sys::llama_rs_json_schema_to_grammar(
             schema_cstr.as_ptr(),
             false,
             &raw mut out,
+            &raw mut error_ptr,
         )
     };
 
-    let result = {
-        if !status_is_ok(rc) || out.is_null() {
-            return Err(LlamaCppError::JsonSchemaToGrammarError(format!(
-                "ffi error {}",
-                status_to_i32(rc)
-            )));
-        }
-        let grammar_bytes = unsafe { CStr::from_ptr(out) }.to_bytes().to_vec();
-        let grammar = String::from_utf8(grammar_bytes)
-            .map_err(|err| LlamaCppError::JsonSchemaToGrammarError(err.to_string()))?;
+    if !status_is_ok(status) || out.is_null() {
+        let message = if error_ptr.is_null() {
+            "unknown error".to_owned()
+        } else {
+            let message = unsafe { CStr::from_ptr(error_ptr) }
+                .to_string_lossy()
+                .into_owned();
 
-        Ok(grammar)
-    };
+            unsafe { llama_cpp_bindings_sys::llama_rs_string_free(error_ptr) };
+
+            message
+        };
+
+        return Err(LlamaCppError::JsonSchemaToGrammarError(message));
+    }
+
+    let grammar_bytes = unsafe { CStr::from_ptr(out) }.to_bytes().to_vec();
 
     unsafe { llama_cpp_bindings_sys::llama_rs_string_free(out) };
 
-    result
+    String::from_utf8(grammar_bytes)
+        .map_err(|err| LlamaCppError::JsonSchemaToGrammarError(err.to_string()))
 }
 
 #[cfg(test)]

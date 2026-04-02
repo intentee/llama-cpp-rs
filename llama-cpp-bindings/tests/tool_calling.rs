@@ -67,7 +67,7 @@ fn tool_calling_generates_grammar_and_prompt() -> Result<()> {
     let tokens = model.str_to_token(&result.prompt, AddBos::Always)?;
     let n_predict: i32 = 128;
     let n_ctx = model
-        .n_ctx_train()
+        .n_ctx_train()?
         .max(tokens.len() as u32 + n_predict as u32);
     let ctx_params = LlamaContextParams::default()
         .with_n_ctx(NonZeroU32::new(n_ctx))
@@ -100,7 +100,7 @@ fn tool_calling_generates_grammar_and_prompt() -> Result<()> {
     let additional_stops = result.additional_stops.clone();
 
     while n_cur <= max_tokens {
-        let token = sampler.sample(&ctx, batch.n_tokens() - 1);
+        let token = sampler.sample(&ctx, batch.n_tokens() - 1)?;
 
         if model.is_eog_token(token) {
             break;

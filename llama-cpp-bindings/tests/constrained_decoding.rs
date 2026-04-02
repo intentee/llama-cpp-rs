@@ -52,7 +52,7 @@ fn json_schema_constrains_output() -> Result<()> {
     let mut generated = String::new();
 
     while n_cur <= 128 {
-        let token = sampler.sample(&ctx, batch.n_tokens() - 1);
+        let token = sampler.sample(&ctx, batch.n_tokens() - 1)?;
 
         if model.is_eog_token(token) {
             break;
@@ -62,8 +62,6 @@ fn json_schema_constrains_output() -> Result<()> {
         generated.push_str(&output_string);
         print!("{output_string}");
         std::io::stdout().flush()?;
-
-        sampler.accept(token)?;
 
         batch.clear();
         batch.add(token, n_cur, &[0], true)?;
