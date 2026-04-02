@@ -207,7 +207,9 @@ pub fn create_llg_sampler(
     };
 
     if sampler.is_null() {
-        Err(GrammarError::NullGrammar("llguidance sampler returned null".to_owned()))
+        Err(GrammarError::NullGrammar(
+            "llguidance sampler returned null".to_owned(),
+        ))
     } else {
         Ok(LlamaSampler { sampler })
     }

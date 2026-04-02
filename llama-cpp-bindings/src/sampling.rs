@@ -19,9 +19,9 @@ fn check_sampler_accept_status(
     if status_is_ok(status) {
         Ok(())
     } else {
-        Err(SamplerAcceptError::CppException(read_and_free_cpp_error(
-            error_ptr,
-        )))
+        Err(SamplerAcceptError::CppException(unsafe {
+            read_and_free_cpp_error(error_ptr)
+        }))
     }
 }
 
@@ -30,9 +30,9 @@ fn check_sampler_not_null(
     error_ptr: *mut c_char,
 ) -> Result<LlamaSampler, GrammarError> {
     if sampler.is_null() {
-        Err(GrammarError::NullGrammar(read_and_free_cpp_error(
-            error_ptr,
-        )))
+        Err(GrammarError::NullGrammar(unsafe {
+            read_and_free_cpp_error(error_ptr)
+        }))
     } else {
         Ok(LlamaSampler { sampler })
     }
@@ -87,9 +87,9 @@ impl LlamaSampler {
             llama_cpp_bindings_sys::LLAMA_RS_STATUS_INVALID_ARGUMENT => {
                 Err(SampleError::InvalidArgument)
             }
-            _ => Err(SampleError::CppException(read_and_free_cpp_error(
-                error_ptr,
-            ))),
+            _ => Err(SampleError::CppException(unsafe {
+                read_and_free_cpp_error(error_ptr)
+            })),
         }
     }
 
