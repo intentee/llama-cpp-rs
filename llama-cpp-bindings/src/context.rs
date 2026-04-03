@@ -1,9 +1,13 @@
 //! Safe wrapper around `llama_context`.
 
+use std::ffi::c_void;
 use std::fmt::{Debug, Formatter};
 use std::num::NonZeroI32;
 use std::ptr::NonNull;
 use std::slice;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use crate::llama_batch::LlamaBatch;
 use crate::model::{LlamaLoraAdapter, LlamaModel};
@@ -41,12 +45,19 @@ pub mod save_seq_state_error;
 pub mod save_session_error;
 pub mod session;
 
+unsafe extern "C" fn abort_callback_trampoline(data: *mut c_void) -> bool {
+    let flag = unsafe { &*(data as *const AtomicBool) };
+
+    flag.load(Ordering::Relaxed)
+}
+
 /// Safe wrapper around `llama_context`.
 pub struct LlamaContext<'model> {
     /// Raw pointer to the underlying `llama_context`.
     pub context: NonNull<llama_cpp_bindings_sys::llama_context>,
     /// A reference to the context's model.
     pub model: &'model LlamaModel,
+    abort_flag: Option<Arc<AtomicBool>>,
     initialized_logits: Vec<i32>,
     embeddings_enabled: bool,
 }
@@ -70,6 +81,7 @@ impl<'model> LlamaContext<'model> {
         Self {
             context: llama_context,
             model: llama_model,
+            abort_flag: None,
             initialized_logits: Vec::new(),
             embeddings_enabled,
         }
@@ -91,6 +103,64 @@ impl<'model> LlamaContext<'model> {
     #[must_use]
     pub fn n_ctx(&self) -> u32 {
         unsafe { llama_cpp_bindings_sys::llama_n_ctx(self.context.as_ptr()) }
+    }
+
+    /// Sets an abort flag that llama.cpp checks during computation.
+    ///
+    /// When the flag is set to `true`, any in-progress `decode()` call will
+    /// abort and return `DecodeError::Aborted`. The `Arc` is stored internally
+    /// to ensure the flag outlives the callback registration.
+    #[expect(unsafe_code, reason = "required for FFI abort callback registration")]
+    pub fn set_abort_flag(&mut self, flag: Arc<AtomicBool>) {
+        let raw_ptr = Arc::as_ptr(&flag) as *mut c_void;
+        self.abort_flag = Some(flag);
+
+        unsafe {
+            llama_cpp_bindings_sys::llama_set_abort_callback(
+                self.context.as_ptr(),
+                Some(abort_callback_trampoline),
+                raw_ptr,
+            );
+        }
+    }
+
+    /// Clears the abort callback so that decode calls are no longer interruptible.
+    #[expect(unsafe_code, reason = "required for FFI abort callback deregistration")]
+    pub fn clear_abort_callback(&mut self) {
+        self.abort_flag = None;
+
+        unsafe {
+            llama_cpp_bindings_sys::llama_set_abort_callback(
+                self.context.as_ptr(),
+                None,
+                std::ptr::null_mut(),
+            );
+        }
+    }
+
+    /// Waits for all pending backend operations to complete.
+    ///
+    /// Must be called before freeing the context to prevent hangs
+    /// during resource cleanup.
+    #[expect(unsafe_code, reason = "required for FFI synchronization call")]
+    pub fn synchronize(&self) {
+        unsafe { llama_cpp_bindings_sys::llama_synchronize(self.context.as_ptr()) }
+    }
+
+    /// Detaches the threadpool from the context.
+    ///
+    /// Must be called before freeing the context to prevent threadpool
+    /// workers from accessing freed resources.
+    #[expect(unsafe_code, reason = "required for FFI threadpool detachment")]
+    pub fn detach_threadpool(&self) {
+        unsafe { llama_cpp_bindings_sys::llama_detach_threadpool(self.context.as_ptr()) }
+    }
+
+    /// Marks a logit index as initialized so it can be read via
+    /// `get_logits_ith`. Use after external decode operations (like
+    /// `eval_chunks`) that bypass the Rust `decode()` method.
+    pub fn mark_logits_initialized(&mut self, token_index: i32) {
+        self.initialized_logits = vec![token_index];
     }
 
     /// Decodes the batch.
@@ -311,14 +381,16 @@ impl<'model> LlamaContext<'model> {
             return Err(LogitsError::TokenNotInitialized(token_index));
         }
 
-        let token_index_u32 =
-            u32::try_from(token_index).map_err(LogitsError::TokenIndexOverflow)?;
+        if token_index >= 0 {
+            let token_index_u32 =
+                u32::try_from(token_index).map_err(LogitsError::TokenIndexOverflow)?;
 
-        if self.n_ctx() <= token_index_u32 {
-            return Err(LogitsError::TokenIndexExceedsContext {
-                token_index: token_index_u32,
-                context_size: self.n_ctx(),
-            });
+            if self.n_ctx() <= token_index_u32 {
+                return Err(LogitsError::TokenIndexExceedsContext {
+                    token_index: token_index_u32,
+                    context_size: self.n_ctx(),
+                });
+            }
         }
 
         let data = unsafe {
@@ -787,5 +859,72 @@ mod tests {
 
         assert!(result.is_ok());
         assert!(!context.initialized_logits.is_empty());
+    }
+
+    #[test]
+    #[serial]
+    fn set_abort_flag_aborts_decode() {
+        use std::sync::Arc;
+        use std::sync::atomic::AtomicBool;
+        use std::sync::atomic::Ordering;
+
+        use crate::DecodeError;
+
+        let (backend, model) = test_model::load_default_model().unwrap();
+        let ctx_params = LlamaContextParams::default().with_n_ctx(std::num::NonZeroU32::new(512));
+        let mut context = model.new_context(&backend, ctx_params).unwrap();
+        let abort_flag = Arc::new(AtomicBool::new(true));
+        context.set_abort_flag(abort_flag.clone());
+
+        let tokens = model.str_to_token("hello", AddBos::Always).unwrap();
+        let mut batch = LlamaBatch::new(512, 1).unwrap();
+        batch.add_sequence(&tokens, 0, false).unwrap();
+
+        let result = context.decode(&mut batch);
+
+        assert_eq!(result, Err(DecodeError::Aborted));
+    }
+
+    #[test]
+    #[serial]
+    fn set_abort_flag_false_allows_decode() {
+        use std::sync::Arc;
+        use std::sync::atomic::AtomicBool;
+
+        let (backend, model) = test_model::load_default_model().unwrap();
+        let ctx_params = LlamaContextParams::default().with_n_ctx(std::num::NonZeroU32::new(512));
+        let mut context = model.new_context(&backend, ctx_params).unwrap();
+        let abort_flag = Arc::new(AtomicBool::new(false));
+        context.set_abort_flag(abort_flag);
+
+        let tokens = model.str_to_token("hello", AddBos::Always).unwrap();
+        let mut batch = LlamaBatch::new(512, 1).unwrap();
+        batch.add_sequence(&tokens, 0, false).unwrap();
+
+        let result = context.decode(&mut batch);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn clear_abort_callback_allows_decode_with_flag_true() {
+        use std::sync::Arc;
+        use std::sync::atomic::AtomicBool;
+
+        let (backend, model) = test_model::load_default_model().unwrap();
+        let ctx_params = LlamaContextParams::default().with_n_ctx(std::num::NonZeroU32::new(512));
+        let mut context = model.new_context(&backend, ctx_params).unwrap();
+        let abort_flag = Arc::new(AtomicBool::new(true));
+        context.set_abort_flag(abort_flag);
+        context.clear_abort_callback();
+
+        let tokens = model.str_to_token("hello", AddBos::Always).unwrap();
+        let mut batch = LlamaBatch::new(512, 1).unwrap();
+        batch.add_sequence(&tokens, 0, false).unwrap();
+
+        let result = context.decode(&mut batch);
+
+        assert!(result.is_ok());
     }
 }
